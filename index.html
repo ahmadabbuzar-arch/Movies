@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <title>Reel Room</title>
 <style>
@@ -66,6 +66,46 @@ main{position:relative;padding:76px 0 48px}
 .detail p{color:var(--ink2);max-width:70ch;margin:4px 20px 0}
 .more{display:block;margin:24px auto 0;background:var(--elev);border:0;border-radius:4px;padding:12px 24px;cursor:pointer;font-weight:700}
 .diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--ink2);margin:8px 20px 0;padding:8px;border-radius:4px;background:#000}
+.detail{overflow:clip}
+.pl{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation;outline:0}
+.detail .pl video{width:100%;height:100%;aspect-ratio:auto;object-fit:contain;display:block}
+.pl:fullscreen{aspect-ratio:auto;width:100vw;height:100vh}.pl:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh}
+.pl .ctl{position:absolute;left:0;right:0;display:flex;opacity:0;pointer-events:none;transition:opacity .25s;color:#fff}
+.pl.show .ctl{opacity:1}.pl.show .bot,.pl.show .mid .pb{pointer-events:auto}
+.pl:not(.show){cursor:none}
+.pl .top{top:0;padding:12px 56px 36px 16px;background:linear-gradient(#000b,transparent)}
+.ttl{font:600 15px/1.2 Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl .mid{top:50%;transform:translateY(-50%);justify-content:center;align-items:center;gap:clamp(20px,9vw,72px)}
+.pl .bot{bottom:0;flex-direction:column;padding:40px 12px 8px;background:linear-gradient(transparent,#000c)}
+.prr{display:flex;align-items:center;gap:12px}
+.pr{position:relative;flex:1;height:26px;cursor:pointer;touch-action:none;display:flex;align-items:center}
+.pr::before{content:"";position:absolute;left:0;right:0;height:4px;background:#ffffff40;border-radius:2px}
+.pr i{position:absolute;left:0;height:4px;border-radius:2px;width:0}
+.buf{background:#ffffff66}.pos{background:var(--red)}
+.pos::after{content:"";position:absolute;right:-7px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;background:var(--red)}
+.tm{font:13px Arial,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+.btns{display:flex;align-items:center;gap:2px}.btns .sp{flex:1}
+.pb{background:none;border:0;color:#fff;cursor:pointer;display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;font:700 14px Arial,sans-serif}
+.pb svg{width:26px;height:26px;fill:currentColor}
+.pb.big{width:68px;height:68px;background:#0008}.pb.big svg{width:38px;height:38px}
+.pb.sk svg{width:42px;height:42px}.pb.on{color:var(--red)}
+@media(hover:hover){.pb:hover{background:#ffffff26}}
+.vol{width:80px;accent-color:#e50914}
+.spin{position:absolute;inset:0;display:none;place-items:center;pointer-events:none}
+.pl.wait .spin{display:grid}.pl.wait .big{visibility:hidden}
+.spin::after{content:"";width:46px;height:46px;border:4px solid #ffffff40;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.flash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#000a;padding:8px 16px;border-radius:20px;font:700 14px Arial,sans-serif;opacity:0;pointer-events:none;transition:opacity .2s}.flash.on{opacity:1}
+@media(max-width:700px){
+ #top{padding:max(10px,env(safe-area-inset-top)) 14px 10px;gap:8px}.l{gap:12px}#search{width:34vw}input,select{font-size:16px}
+ .hc p{-webkit-line-clamp:2}.hb button{flex:1}
+ .overlay{padding:0;place-items:stretch}.detail{width:100%;border-radius:0;min-height:100%}
+ .vbox{position:sticky;top:0;z-index:5;background:#000}
+ .close{position:fixed;top:max(10px,env(safe-area-inset-top));right:10px;z-index:30}
+ .bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.sel select{width:100%;min-width:0}
+ .vol{display:none}.pb.big{width:56px;height:56px}
+}
+@media(prefers-reduced-motion:reduce){.spin::after{animation:none}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none!important}}
 </style>
 </head>
@@ -179,7 +219,12 @@ const hostOf = (u) => { try { return new URL(u).host + new URL(u).pathname.slice
 const provConsole = Object.fromEntries(["log", "info", "warn", "error", "debug"].map((k) => [k, (...a) => { plog(`console.${k}: ` + a.map((x) => { try { return typeof x === "string" ? x : x instanceof Error ? x.message : JSON.stringify(x); } catch { return String(x); } }).join(" ")); }]));
 
 // Direct first (cheap); falls back to the proxy when CORS blocks it or forbidden headers are needed.
+let lastAbs = "";
 async function pfetch(input, init = {}) {
+  if (typeof input === "string") {
+    if (/^https?:(?!\/\/)/i.test(input) && lastAbs) { try { input = new URL(input.replace(/^https?:/i, ""), lastAbs).href; } catch { /* keep */ } }
+    else if (/^https?:\/\//i.test(input) && !/themoviedb\.org/.test(input)) lastAbs = input;
+  }
   const t0 = typeof input === "string" ? input : input.url;
   try {
     const r = await pfetchInner(input, init);
@@ -454,6 +499,8 @@ async function loadProvider(rec) {
   function runModule(path) {
     if (cache[path]) return cache[path].exports;
     let code = files[path];
+    // these bundles drop every stream their built-in extractors cannot unpack (embed pages); keep a handle on the raw list
+    code = code.replace(/module\.exports\s*=\s*\{\s*getStreams:\s*wrappedGetStreams\s*\}\s*;?/, "module.exports = { getStreams: wrappedGetStreams, getStreamsRaw: getStreams };");
     if (ESM_RE.test(code)) code = esmToCjs(code);
     const module = { exports: {} };
     cache[path] = module;
@@ -553,7 +600,12 @@ async function loadProvider(rec) {
     };
     raw.getStream = async ({ link }) => {
       const [tmdb, season, episode] = link.split(":");
-      return raw.__getStreams(tmdb, season != null ? "tv" : "movie", season != null ? +season : undefined, episode != null ? +episode : undefined);
+      const args = [tmdb, season != null ? "tv" : "movie", season != null ? +season : undefined, episode != null ? +episode : undefined];
+      const res = await raw.__getStreams(...args);
+      if ((Array.isArray(res) && res.length) || typeof raw.getStreamsRaw !== "function") return res;
+      // nothing the extractors could unpack: offer the provider's embed pages (played in an iframe)
+      const rr = await raw.getStreamsRaw(...args);
+      return (Array.isArray(rr) ? rr : []).filter((x) => x && /^https?:\/\//i.test(x.url || "")).map((x) => ({ ...x, type: guessType(x.url) || "embed" }));
     };
     raw.__getStreams = raw.getStreams;
     raw.__tmdb = true;
@@ -819,19 +871,109 @@ let hlsLoader;
 const loadHls = () => (hlsLoader ||= loadScript("https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js")
   .then(() => window.Hls).catch((e) => { hlsLoader = null; throw e; }));
 
+/* ===================== player shell (Netflix-style controls) ===================== */
+const IC = {
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M12 5V2L7 6.5 12 11V8a6 6 0 1 1-6 6H4a8 8 0 1 0 8-9z"/><text x="12" y="17.5" font-size="7" text-anchor="middle" fill="#000" font-family="Arial" font-weight="700">10</text></svg>',
+  fwd: '<svg viewBox="0 0 24 24"><path d="M12 5V2l5 4.5L12 11V8a6 6 0 1 0 6 6h2a8 8 0 1 1-8-9z"/><text x="12" y="17.5" font-size="7" text-anchor="middle" fill="#000" font-family="Arial" font-weight="700">10</text></svg>',
+  vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
+  mute: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13 .4 1.4-1.4 2.1 2.1L21.6 8l1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1L16 13.6l2.1-2.1z"/></svg>',
+  fs: '<svg viewBox="0 0 24 24"><path d="M5 5h5v2H7v3H5zm9 0h5v5h-2V7h-3zM5 14h2v3h3v2H5zm12 0h2v5h-5v-2h3z"/></svg>',
+  cc: '<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM11 11H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z"/></svg>',
+};
+function playerShell(v, title) {
+  v.removeAttribute("controls");
+  const fmt = (t) => { if (!isFinite(t)) return "0:00"; t = Math.floor(t); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), x = t % 60; return `${h ? h + ":" + String(m).padStart(2, "0") : m}:${String(x).padStart(2, "0")}`; };
+  const touch = matchMedia("(pointer:coarse)").matches;
+  const wrap = el("div", { class: "pl paused wait show", tabindex: "0" });
+  let hideT = 0, tapT = 0, taps = 0, dragging = false;
+  const show = () => { wrap.classList.add("show"); clearTimeout(hideT); if (!v.paused && !dragging) hideT = setTimeout(() => wrap.classList.remove("show"), 3000); };
+  const toggle = () => (v.paused ? v.play().catch(() => {}) : v.pause());
+  const seek = (d) => { v.currentTime = Math.max(0, Math.min(v.duration || 1e9, v.currentTime + d)); show(); };
+  const mk = (n, label, fn, cls = "") => { const b = el("button", { class: "pb " + cls, "aria-label": label, onclick: (e) => { e.stopPropagation(); fn(); show(); } }); b.innerHTML = IC[n]; return b; };
+  const flash = el("div", { class: "flash" }); let flashT = 0;
+  const say = (t) => { flash.textContent = t; flash.classList.add("on"); clearTimeout(flashT); flashT = setTimeout(() => flash.classList.remove("on"), 600); };
+  const big = mk("play", "Play or pause", toggle, "big"), small = mk("play", "Play or pause", toggle);
+  const bk = mk("back", "Back 10 seconds", () => seek(-10), "sk"), fw = mk("fwd", "Forward 10 seconds", () => seek(10), "sk");
+  const mute = mk("vol", "Mute", () => { v.muted = !v.muted; });
+  const vol = el("input", { type: "range", class: "vol", "aria-label": "Volume", oninput: (e) => { v.volume = +e.target.value; v.muted = false; } });
+  vol.min = 0; vol.max = 1; vol.step = 0.05; vol.value = 1;
+  const tm = el("span", { class: "tm" }, "0:00 / 0:00");
+  const buf = el("i", { class: "buf" }), pos = el("i", { class: "pos" });
+  const bar = el("div", { class: "pr", role: "slider", "aria-label": "Seek" }, buf, pos);
+  const seekTo = (e) => { const r = bar.getBoundingClientRect(), p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); if (v.duration) v.currentTime = p * v.duration; pos.style.width = p * 100 + "%"; };
+  bar.onpointerdown = (e) => { e.stopPropagation(); dragging = true; bar.setPointerCapture(e.pointerId); seekTo(e); show(); };
+  bar.onpointermove = (e) => { if (dragging) seekTo(e); };
+  bar.onpointerup = bar.onpointercancel = () => { dragging = false; show(); };
+  bar.onclick = (e) => e.stopPropagation();
+  const speeds = [1, 1.25, 1.5, 2, 0.75]; let si = 0;
+  const spd = el("button", { class: "pb", "aria-label": "Playback speed", onclick: (e) => { e.stopPropagation(); si = (si + 1) % speeds.length; v.playbackRate = speeds[si]; spd.textContent = speeds[si] + "×"; show(); } }, "1×");
+  const hasCc = v.querySelectorAll("track").length > 0; let ccOn = !!v.querySelector("track[default]");
+  const setCc = () => [...v.textTracks].forEach((t, i) => { t.mode = ccOn && i === 0 ? "showing" : "disabled"; });
+  const cc = hasCc ? mk("cc", "Subtitles", () => { ccOn = !ccOn; setCc(); cc.classList.toggle("on", ccOn); }, ccOn ? "on" : "") : null;
+  if (hasCc) v.addEventListener("loadedmetadata", setCc);
+  const onFs = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); wrap.classList.toggle("fs", on); if (!on) try { screen.orientation?.unlock?.(); } catch { /* ignore */ } };
+  const fs = () => {
+    if (document.fullscreenElement || document.webkitFullscreenElement) return (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    const f = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+    if (f) { try { const r = f.call(wrap); r?.then?.(() => screen.orientation?.lock?.("landscape")?.catch?.(() => {}))?.catch?.(() => {}); } catch { /* ignore */ } }
+    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); // iPhone
+  };
+  document.addEventListener("fullscreenchange", onFs); document.addEventListener("webkitfullscreenchange", onFs);
+  const setIcons = (playing) => { big.innerHTML = small.innerHTML = playing ? IC.pause : IC.play; };
+  const upd = () => {
+    const d = v.duration || 0;
+    if (!dragging) pos.style.width = d ? (v.currentTime / d) * 100 + "%" : "0";
+    tm.textContent = `${fmt(v.currentTime)} / ${fmt(d)}`;
+    if (d && v.buffered.length) buf.style.width = (v.buffered.end(v.buffered.length - 1) / d) * 100 + "%";
+  };
+  for (const ev of ["timeupdate", "progress", "durationchange", "loadedmetadata"]) v.addEventListener(ev, upd);
+  v.addEventListener("play", () => { wrap.classList.remove("paused"); setIcons(true); show(); });
+  v.addEventListener("playing", () => { wrap.classList.remove("wait", "paused"); setIcons(true); show(); });
+  v.addEventListener("pause", () => { wrap.classList.add("paused"); setIcons(false); clearTimeout(hideT); wrap.classList.add("show"); });
+  v.addEventListener("waiting", () => wrap.classList.add("wait"));
+  v.addEventListener("canplay", () => wrap.classList.remove("wait"));
+  v.addEventListener("volumechange", () => { mute.innerHTML = v.muted || !v.volume ? IC.mute : IC.vol; });
+  wrap.addEventListener("pointermove", () => show());
+  wrap.addEventListener("click", (e) => {
+    const r = wrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width; taps++; clearTimeout(tapT);
+    tapT = setTimeout(() => {
+      if (taps === 1) { if (touch) (wrap.classList.contains("show") && !v.paused ? wrap.classList.remove("show") : show()); else toggle(); }
+      else if (touch) { if (x < 0.35) { seek(-10); say("−10s"); } else if (x > 0.65) { seek(10); say("+10s"); } else toggle(); }
+      else fs();
+      taps = 0;
+    }, 250);
+  });
+  wrap.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { " ": toggle, k: toggle, arrowleft: () => seek(-10), arrowright: () => seek(10), f: fs, m: () => { v.muted = !v.muted; },
+      arrowup: () => { v.volume = Math.min(1, v.volume + 0.1); vol.value = v.volume; }, arrowdown: () => { v.volume = Math.max(0, v.volume - 0.1); vol.value = v.volume; } }[k];
+    if (m) { e.preventDefault(); m(); show(); }
+  });
+  const fsBtn = mk("fs", "Fullscreen", fs);
+  wrap.append(v, el("div", { class: "spin" }), flash,
+    el("div", { class: "ctl top" }, el("span", { class: "ttl" }, title)),
+    el("div", { class: "ctl mid" }, bk, big, fw),
+    el("div", { class: "ctl bot" }, el("div", { class: "prr" }, bar, tm),
+      el("div", { class: "btns" }, small, mute, vol, el("span", { class: "sp" }), ...[spd, cc, fsBtn].filter(Boolean))));
+  setIcons(false); mute.innerHTML = IC.vol;
+  return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
+}
+
 function mountPlayer(box, s, poster, onError, extra) {
   if (s.type === "embed" || s.type === "iframe" || s.type === "page") {
     const f = el("iframe", { src: s.link, allowfullscreen: true, allow: "autoplay; fullscreen; picture-in-picture", referrerpolicy: "no-referrer", style: "width:100%;aspect-ratio:16/9;border:0;background:#000" });
     box.replaceChildren(f);
     return () => { f.src = "about:blank"; };
   }
-  const v = el("video", { controls: true, autoplay: true, playsinline: true });
+  const v = el("video", { autoplay: true, playsinline: true });
   if (poster) v.poster = poster;
   for (const [k, t] of (s.subtitles || []).entries()) {
     const u = t.uri || t.url || t.file || t.link; if (!u) continue;
     v.append(el("track", { kind: "subtitles", src: proxyUrl(u, {}), label: t.title || t.lang || t.language || `Sub ${k + 1}`, srclang: (t.language || t.lang || "en").slice(0, 2), default: k === 0 }));
   }
-  box.replaceChildren(v);
+  const shell = playerShell(v, box.dataset.title || "");
+  box.replaceChildren(shell.node); shell.node.focus({ preventScroll: true });
   const merged = { ...(extra || {}), ...(s.headers || {}) };
   const hdrs = Object.keys(merged).length ? merged : null;
   let isHls = s.type === "m3u8" || /\.m3u8(\?|$)/i.test(s.link), triedHls = false;
@@ -887,7 +1029,7 @@ function mountPlayer(box, s, poster, onError, extra) {
     }).catch((e) => { log.push("hls.js: " + e.message); if (canNative) native(src); else onError(e.message); });
   }
   start();
-  return () => { dead = true; hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
+  return () => { dead = true; shell.destroy(); hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
 }
 
 /* ===================== stream info (language / quality / server) ===================== */
@@ -912,7 +1054,7 @@ function openDetail(post) {
   const esc = (e) => e.key === "Escape" && close();
   window.addEventListener("keydown", esc);
 
-  const videoBox = el("div");
+  const videoBox = el("div", { class: "vbox" });
   const body = el("div");
   const article = el("article", { class: "detail", onclick: (e) => e.stopPropagation() },
     el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), videoBox, body);
@@ -942,6 +1084,7 @@ function openDetail(post) {
     if (gone) return;
     const s = vis()[idx];
     stopPlayer?.(); stopPlayer = null;
+    videoBox.dataset.title = (meta && meta.title) || post.title || "";
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
       if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
       err = m + " Try another server or quality."; errDetail = d || ""; drawBody();

@@ -28,7 +28,12 @@ async function assertPublicHost(host) {
   else {
     // DNS can fail transiently on serverless (EBUSY / EAI_AGAIN): retry a few times
     for (let i = 0; ; i++) {
-      try { addrs = await dns.lookup(host, { all: true }); break; }
+      try {
+        // c-ares resolver first (not the shared libuv threadpool, which returns EBUSY under load)
+        const out = [];
+        for (const fn of ["resolve4", "resolve6"]) { try { out.push(...(await dns[fn](host)).map((address) => ({ address }))); } catch { /* none */ } }
+        addrs = out.length ? out : await dns.lookup(host, { all: true }); break;
+      }
       catch (e) {
         if (i >= 3 || !/EBUSY|EAI_AGAIN|ETIMEOUT|ECONNREFUSED/.test(String(e.code || e.message))) throw e;
         await new Promise((r) => setTimeout(r, 300 * (i + 1)));

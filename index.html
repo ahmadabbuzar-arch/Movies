@@ -377,7 +377,7 @@ const commonHeaders = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
 };
 const extractors = new Proxy({}, {
-  get: (_t, name) => async () => { console.warn(`[extractor] "${String(name)}" is not supported in this app`); return []; },
+  get: (_t, name) => async () => { plog(`[extractor] "${String(name)}" is not supported in this app`); return []; },
 });
 
 // ---- extra node-module shims so more providers load ----
@@ -650,20 +650,25 @@ function autoProv() {
     getCatalog: () => first.getCatalog(), getPosts: (a) => first.getPosts(a), getSearchPosts: (a) => first.getSearchPosts(a),
     getMeta: (a) => first.getMeta(a), getEpisodes: (a) => first.getEpisodes(a),
     getStream: (a) => new Promise((resolve) => {
-      const found = []; let pending = list.length, grace = null, done = false, hard = null;
+      const found = []; let grace = null, done = false, hard = null;
       const finish = () => {
         if (done) return; done = true; clearTimeout(grace); clearTimeout(hard);
         const seen = new Set();
         resolve(found.filter((x) => !seen.has(x.link) && seen.add(x.link)).sort((x, y) => (x.type === "embed") - (y.type === "embed")));
       };
-      hard = setTimeout(finish, 25000);
-      list.forEach((pv) => withTimeout(pv.getStream(a), 24000)
-        .then((r) => {
-          plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
-          if (r.length) { found.push(...r.map((x) => tag(pv, x))); if (!grace) grace = setTimeout(finish, 2500); }
-        })
-        .catch((e) => plog(`[auto] ${pv.name}: ${e.message}`))
-        .finally(() => { if (--pending === 0) finish(); }));
+      hard = setTimeout(finish, 55000);
+      const queue = [...list]; let workers = Math.min(8, list.length); // 8 providers at a time
+      const worker = async () => {
+        for (let pv; !done && (pv = queue.shift()); ) {
+          try {
+            const r = await withTimeout(pv.getStream(a), 25000);
+            plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
+            if (r.length) { found.push(...r.map((x) => tag(pv, x))); if (!grace) grace = setTimeout(finish, 2500); }
+          } catch (e) { plog(`[auto] ${pv.name}: ${e.message}`); }
+        }
+        if (--workers === 0) finish();
+      };
+      for (let i = 0; i < workers; i++) worker();
     }),
   };
 }
@@ -884,7 +889,7 @@ function openDetail(post) {
   const play = (link, type) => {
     streams = null; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
     videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    withTimeout(p.getStream({ link, type })).then((s) => {
+    withTimeout(p.getStream({ link, type }), 60000).then((s) => {
       if (gone) return;
       streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => qRank(b._i.q) - qRank(a._i.q));
       f = { lang: "All", q: "All", srv: "All" };
@@ -1103,8 +1108,11 @@ async function loadRepoProviders() {
   try { names = (await (await fetch("/api/providers")).json()).files || []; } catch { /* fall back */ }
   if (!names.length) try { names = await (await fetch("providers/index.json")).json(); } catch { /* none */ }
   const files = new Map();
-  await Promise.all(names.map(async (n) => {
-    try { const r = await fetch("providers/" + n); if (r.ok) files.set("providers/" + n, await r.text()); } catch { /* skip */ }
+  const queue = [...names]; // fetch 8 files at a time; only .js/.json are needed, other file types are ignored
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    for (let n; (n = queue.shift()); ) {
+      try { const r = await fetch("providers/" + n.split("/").map(encodeURIComponent).join("/")); if (r.ok) files.set("providers/" + n, await r.text()); } catch { /* skip */ }
+    }
   }));
   for (const f of findProviders(files)) {
     const folder = f.entry ? f.entry.replace(/\.(c|m)?js$/i, "") : f.dir.split("/").pop() || "provider";

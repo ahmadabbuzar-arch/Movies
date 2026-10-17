@@ -96,6 +96,11 @@ main{position:relative;padding:76px 0 48px}
 .spin::after{content:"";width:46px;height:46px;border:4px solid #ffffff40;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .flash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#000a;padding:8px 16px;border-radius:20px;font:700 14px Arial,sans-serif;opacity:0;pointer-events:none;transition:opacity .2s}.flash.on{opacity:1}
+.menu{position:absolute;right:12px;bottom:64px;width:min(240px,calc(100% - 24px));max-height:calc(100% - 90px);overflow:auto;background:#181818f2;border-radius:8px;padding:6px 0;box-shadow:0 8px 30px #000a;z-index:6;backdrop-filter:blur(8px)}
+.mh{font:700 11px Arial,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding:10px 16px 4px}
+.mi{display:flex;gap:10px;align-items:center;width:100%;min-height:42px;background:none;border:0;color:#fff;text-align:left;padding:8px 16px;font:15px Arial,sans-serif;cursor:pointer}
+.mi.on{font-weight:700}.ck{width:16px;color:var(--red)}
+@media(hover:hover){.mi:hover{background:#ffffff1f}}
 @media(max-width:700px){
  #top{padding:max(10px,env(safe-area-inset-top)) 14px 10px;gap:8px}.l{gap:12px}#search{width:34vw}input,select{font-size:16px}
  .hc p{-webkit-line-clamp:2}.hb button{flex:1}
@@ -880,6 +885,7 @@ const IC = {
   fwd: '<svg viewBox="0 0 24 24"><path d="M12 5V2l5 4.5L12 11V8a6 6 0 1 0 6 6h2a8 8 0 1 1-8-9z"/><text x="12" y="17.5" font-size="7" text-anchor="middle" fill="#000" font-family="Arial" font-weight="700">10</text></svg>',
   vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
   mute: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13 .4 1.4-1.4 2.1 2.1L21.6 8l1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1L16 13.6l2.1-2.1z"/></svg>',
+  gear: '<svg viewBox="0 0 24 24"><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>',
   fs: '<svg viewBox="0 0 24 24"><path d="M5 5h5v2H7v3H5zm9 0h5v5h-2V7h-3zM5 14h2v3h3v2H5zm12 0h2v5h-5v-2h3z"/></svg>',
   cc: '<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM11 11H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z"/></svg>',
 };
@@ -889,7 +895,7 @@ function playerShell(v, title) {
   const touch = matchMedia("(pointer:coarse)").matches;
   const wrap = el("div", { class: "pl paused wait show", tabindex: "0" });
   let hideT = 0, tapT = 0, taps = 0, dragging = false;
-  const show = () => { wrap.classList.add("show"); clearTimeout(hideT); if (!v.paused && !dragging) hideT = setTimeout(() => wrap.classList.remove("show"), 3000); };
+  const show = () => { wrap.classList.add("show"); clearTimeout(hideT); if (!v.paused && !dragging) hideT = setTimeout(() => { wrap.classList.remove("show"); menu.hidden = true; }, 3000); };
   const toggle = () => (v.paused ? v.play().catch(() => {}) : v.pause());
   const seek = (d) => { v.currentTime = Math.max(0, Math.min(v.duration || 1e9, v.currentTime + d)); show(); };
   const mk = (n, label, fn, cls = "") => { const b = el("button", { class: "pb " + cls, "aria-label": label, onclick: (e) => { e.stopPropagation(); fn(); show(); } }); b.innerHTML = IC[n]; return b; };
@@ -908,8 +914,15 @@ function playerShell(v, title) {
   bar.onpointermove = (e) => { if (dragging) seekTo(e); };
   bar.onpointerup = bar.onpointercancel = () => { dragging = false; show(); };
   bar.onclick = (e) => e.stopPropagation();
-  const speeds = [1, 1.25, 1.5, 2, 0.75]; let si = 0;
-  const spd = el("button", { class: "pb", "aria-label": "Playback speed", onclick: (e) => { e.stopPropagation(); si = (si + 1) % speeds.length; v.playbackRate = speeds[si]; spd.textContent = speeds[si] + "×"; show(); } }, "1×");
+  const speeds = [0.75, 1, 1.25, 1.5, 2];
+  const menu = el("div", { class: "menu", hidden: true });
+  menu.addEventListener("click", (e) => e.stopPropagation());
+  const renderMenu = () => {
+    const secs = (typeof playerMenu === "function" ? playerMenu() : []).concat([{ title: "Speed", items: speeds.map((sp) => ({ label: sp === 1 ? "Normal" : sp + "×", active: v.playbackRate === sp, pick: () => { v.playbackRate = sp; } })) }]);
+    menu.replaceChildren(...secs.filter((x) => x.title === "Speed" || x.items.length > 2).map((sec) => el("div", {}, el("div", { class: "mh" }, sec.title),
+      ...sec.items.map((it) => el("button", { class: "mi" + (it.active ? " on" : ""), onclick: (e) => { e.stopPropagation(); menu.hidden = true; it.pick(); show(); } }, el("span", { class: "ck" }, it.active ? "\u2713" : ""), it.label)))));
+  };
+  const gear = mk("gear", "Settings", () => { menu.hidden = !menu.hidden; if (!menu.hidden) renderMenu(); });
   const hasCc = v.querySelectorAll("track").length > 0; let ccOn = !!v.querySelector("track[default]");
   const setCc = () => [...v.textTracks].forEach((t, i) => { t.mode = ccOn && i === 0 ? "showing" : "disabled"; });
   const cc = hasCc ? mk("cc", "Subtitles", () => { ccOn = !ccOn; setCc(); cc.classList.toggle("on", ccOn); }, ccOn ? "on" : "") : null;
@@ -938,6 +951,7 @@ function playerShell(v, title) {
   v.addEventListener("volumechange", () => { mute.innerHTML = v.muted || !v.volume ? IC.mute : IC.vol; });
   wrap.addEventListener("pointermove", () => show());
   wrap.addEventListener("click", (e) => {
+    if (!menu.hidden) { menu.hidden = true; return; }
     const r = wrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width; taps++; clearTimeout(tapT);
     tapT = setTimeout(() => {
       if (taps === 1) { if (touch) (wrap.classList.contains("show") && !v.paused ? wrap.classList.remove("show") : show()); else toggle(); }
@@ -952,11 +966,11 @@ function playerShell(v, title) {
     if (m) { e.preventDefault(); m(); show(); }
   });
   const fsBtn = mk("fs", "Fullscreen", fs);
-  wrap.append(v, el("div", { class: "spin" }), flash,
+  wrap.append(v, el("div", { class: "spin" }), flash, menu,
     el("div", { class: "ctl top" }, el("span", { class: "ttl" }, title)),
     el("div", { class: "ctl mid" }, bk, big, fw),
     el("div", { class: "ctl bot" }, el("div", { class: "prr" }, bar, tm),
-      el("div", { class: "btns" }, small, mute, vol, el("span", { class: "sp" }), ...[spd, cc, fsBtn].filter(Boolean))));
+      el("div", { class: "btns" }, small, mute, vol, el("span", { class: "sp" }), ...[cc, gear, fsBtn].filter(Boolean))));
   setIcons(false); mute.innerHTML = IC.vol;
   return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
 }
@@ -967,7 +981,7 @@ function mountPlayer(box, s, poster, onError, extra) {
     box.replaceChildren(f);
     return () => { f.src = "about:blank"; };
   }
-  const v = el("video", { autoplay: true, playsinline: true });
+  const v = el("video", { autoplay: true, playsinline: true, preload: "auto" });
   if (poster) v.poster = poster;
   for (const [k, t] of (s.subtitles || []).entries()) {
     const u = t.uri || t.url || t.file || t.link; if (!u) continue;
@@ -983,7 +997,7 @@ function mountPlayer(box, s, poster, onError, extra) {
   const urls = hdrs ? [proxyUrl(s.link, hdrs), s.link] : [s.link, proxyUrl(s.link, {}), proxyUrl(s.link, { Referer: orig })];
   const host = (() => { try { return new URL(s.link).host; } catch { return s.link; } })();
   const log = [];
-  let attempt = 0, hls = null, dead = false;
+  let attempt = 0, hls = null, dead = false, wd = 0, started = false, codecChecked = false;
 
   // last resort: ask the proxy what the server really answers, so the error says why
   const finish = async (msg) => {
@@ -1010,6 +1024,8 @@ function mountPlayer(box, s, poster, onError, extra) {
 
   function start() {
     if (dead) return;
+    clearTimeout(wd); started = false;
+    wd = setTimeout(() => { if (!dead && !started) { log.push(`no data after 12s (try ${attempt + 1})`); fail("Stream took too long to start."); } }, 12000);
     const src = urls[attempt];
     hls?.destroy(); hls = null;
     if (!isHls) return native(src);
@@ -1029,12 +1045,21 @@ function mountPlayer(box, s, poster, onError, extra) {
       else onError("This browser cannot play HLS streams.");
     }).catch((e) => { log.push("hls.js: " + e.message); if (canNative) native(src); else onError(e.message); });
   }
+  v.addEventListener("loadeddata", () => { started = true; clearTimeout(wd); });
+  v.addEventListener("playing", () => {
+    started = true; clearTimeout(wd);
+    if (codecChecked) return; codecChecked = true;
+    setTimeout(() => { if (!dead && v.videoWidth === 0 && v.readyState >= 2) onError("This video format isn't supported on this device.", log.concat("audio plays but no video frames: unsupported codec (HEVC/4K?)").join("\n")); }, 2000);
+  });
   start();
-  return () => { dead = true; shell.destroy(); hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
+  return () => { dead = true; clearTimeout(wd); shell.destroy(); hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
 }
 
 /* ===================== stream info (language / quality / server) ===================== */
 const LANGS = [["Hindi", /hindi|\bhin\b/i], ["English", /english|\beng\b/i], ["Tamil", /tamil/i], ["Telugu", /telugu/i], ["Malayalam", /malayalam/i], ["Kannada", /kannada/i], ["Bengali", /bengali/i], ["Punjabi", /punjabi/i], ["Spanish", /spanish|latino/i], ["French", /french/i], ["Dual Audio", /dual/i], ["Multi Audio", /multi/i]];
+const PREF = ["1080p", "720p", "4K", "1440p", "480p", "576p", "360p", "240p", "SD"];
+const prefRank = (x) => (x.type === "embed" ? 100 : 0) + (PREF.indexOf(x._i.q) < 0 ? 50 : PREF.indexOf(x._i.q));
+let playerMenu = null;
 const qRank = (q) => (q === "4K" ? 2160 : parseInt(q) || 0);
 function streamInfo(x) {
   const t = [x.server, x.title, x.name, x.quality, x.language, x.lang].filter(Boolean).join(" ");
@@ -1066,7 +1091,7 @@ function openDetail(post) {
     videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
     withTimeout(p.getStream({ link, type }), 60000).then((s) => {
       if (gone) return;
-      streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => qRank(b._i.q) - qRank(a._i.q));
+      streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => prefRank(a) - prefRank(b));
       f = { lang: "All", q: "All", srv: "All" };
       if (!streams.length) { err = "No playable stream found."; errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
@@ -1085,6 +1110,11 @@ function openDetail(post) {
     if (gone) return;
     const s = vis()[idx];
     stopPlayer?.(); stopPlayer = null;
+    playerMenu = () => {
+      const uq = (fn) => [...new Set((streams || []).flatMap(fn))];
+      const sec = (title, key, vals, all) => ({ title, items: [["All", all], ...vals.map((x) => [x, x])].map(([val, label]) => ({ label, active: f[key] === val, pick: () => { f[key] = val; idx = 0; err = ""; errDetail = ""; draw(); } })) });
+      return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Language", "lang", uq((x) => x._i.langs), "Any")];
+    };
     videoBox.dataset.title = (meta && meta.title) || post.title || "";
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
       if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
@@ -1096,19 +1126,6 @@ function openDetail(post) {
   function drawBody() {
     const s = vis()[idx];
     const nodes = [];
-    if (streams?.length) {
-      const uniq = (k) => ["All", ...new Set(streams.flatMap((x) => (k === "langs" ? x._i.langs : [x._i[k]])))];
-      const set = (k) => (v) => { f[k] = v; idx = 0; err = ""; errDetail = ""; draw(); };
-      nodes.push(el("div", { class: "bar" },
-        selectBox("Language", uniq("langs"), f.lang, set("lang")),
-        selectBox("Quality", uniq("q").sort((a, b) => (a === "All" ? -1 : b === "All" ? 1 : qRank(b) - qRank(a))), f.q, set("q")),
-        selectBox("Server", uniq("srv"), f.srv, set("srv"))));
-    }
-    if (s && err) nodes.push(el("p", { class: "note err" }, err));
-    if (errDetail) nodes.push(el("pre", { class: "diag" }, errDetail));
-    if (vis().length > 1)
-      nodes.push(el("div", { class: "alts" }, vis().map((x, n) =>
-        el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; errDetail = ""; idx = n; draw(); } }, `${x._i.srv} · ${x._i.q}`))));
     if (meta?.linkList?.length) {
       if (eps) nodes.push(el("div", { class: "alts" }, el("b", {}, eps.title || "Episodes"),
         eps.list === null && el("span", { class: "note" }, "Loading episodes…"),

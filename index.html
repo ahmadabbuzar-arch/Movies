@@ -96,6 +96,9 @@ main{position:relative;padding:76px 0 48px}
 .spin::after{content:"";width:46px;height:46px;border:4px solid #ffffff40;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .flash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#000a;padding:8px 16px;border-radius:20px;font:700 14px Arial,sans-serif;opacity:0;pointer-events:none;transition:opacity .2s}.flash.on{opacity:1}
+.moresec{margin:22px 20px 0}.moresec h4{font:700 18px Arial,sans-serif;margin:0 0 10px}
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}@media(min-width:700px){.mgrid{grid-template-columns:repeat(4,1fr)}}
+#sent{height:1px}
 .menu{position:absolute;right:12px;bottom:64px;width:min(240px,calc(100% - 24px));max-height:calc(100% - 90px);overflow:auto;background:#181818f2;border-radius:8px;padding:6px 0;box-shadow:0 8px 30px #000a;z-index:6;backdrop-filter:blur(8px)}
 .mh{font:700 11px Arial,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding:10px 16px 4px}
 .mi{display:flex;gap:10px;align-items:center;width:100%;min-height:42px;background:none;border:0;color:#fff;text-align:left;padding:8px 16px;font:15px Arial,sans-serif;cursor:pointer}
@@ -125,6 +128,7 @@ main{position:relative;padding:76px 0 48px}
   <nav id="nav" hidden></nav>
   <p id="note" class="note"></p>
   <div id="home"></div>
+  <div id="sent" aria-hidden="true"></div>
   <div class="grid" id="grid" hidden></div>
   <button class="more" id="more" hidden>Load more</button>
 </main>
@@ -613,6 +617,11 @@ async function loadProvider(rec) {
       const looksEmbed = (u) => { try { const x = new URL(u); return /vidmoly|filemoon|streamhide|voe\.|dood|streamtape|mixdrop|vidhide|vtube|streamwish|filelions|lulustream|upstream|vidoza|embed|\/e\/|\/v\/|\/player|iframe|\/play\b/i.test(x.host + x.pathname); } catch { return false; } };
       return (Array.isArray(rr) ? rr : []).filter((x) => x && /^https?:\/\//i.test(x.url || "") && (guessType(x.url) || looksEmbed(x.url))).map((x) => ({ ...x, type: guessType(x.url) || "embed" }));
     };
+    raw.getMore = async ({ link }, ctx) => { // same-genre titles from Cinemeta
+      const [type, id] = link.split(":"), m = await getCin(ctx, link), g = (m.genres || [])[0];
+      const r = await cj(ctx, `/catalog/${type}/top${g ? `/genre=${encodeURIComponent(g)}` : ""}.json`);
+      return (r.metas || []).filter((x) => x.id !== id).map(toPost);
+    };
     raw.__getStreams = raw.getStreams;
     raw.__tmdb = true;
   }
@@ -637,6 +646,7 @@ async function loadProvider(rec) {
 
   return {
     id, name, rec, tmdb: !!raw.__tmdb,
+    getMore: async (a) => (typeof raw.getMore === "function" ? normPosts(await call(raw.getMore, a)) : []),
     async getCatalog() {
       if (typeof raw.getCatalog === "function") return asList(await call(raw.getCatalog, {})).map((c) => ({ title: c.title || c.name || String(c.filter), filter: c.filter ?? c.value ?? c.id ?? "" }));
       if (Array.isArray(raw.catalog)) return raw.catalog.map((c) => ({ title: c.title || c.name, filter: c.filter ?? c.value ?? c.id ?? "" }));
@@ -736,7 +746,7 @@ function autoProv() {
   const first = tm[0];
   const tag = (pv, x) => ({ ...x, provider: pv.name, server: `${pv.name}${x.server && x.server !== pv.name ? " · " + x.server : ""}${x.quality ? " " + x.quality : ""}`, headers: { ...(pv.rec.streamHeaders || {}), ...(x.headers || {}) } });
   return {
-    id: AUTO, name: "Auto (all providers)", rec: {},
+    id: AUTO, name: "Auto (all providers)", rec: {}, getMore: (a) => (first.getMore ? first.getMore(a) : []),
     getCatalog: () => first.getCatalog(), getPosts: (a) => first.getPosts(a), getSearchPosts: (a) => first.getSearchPosts(a),
     getMeta: async (a) => { const m = await first.getMeta(a); if (m.tmdb) TITLES.set(String(m.tmdb), { title: m.title, year: m.year }); return m; }, getEpisodes: (a) => first.getEpisodes(a),
     getStream: (a) => new Promise((resolve) => {
@@ -885,6 +895,7 @@ const IC = {
   fwd: '<svg viewBox="0 0 24 24"><path d="M12 5V2l5 4.5L12 11V8a6 6 0 1 0 6 6h2a8 8 0 1 1-8-9z"/><text x="12" y="17.5" font-size="7" text-anchor="middle" fill="#000" font-family="Arial" font-weight="700">10</text></svg>',
   vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
   mute: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13 .4 1.4-1.4 2.1 2.1L21.6 8l1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1L16 13.6l2.1-2.1z"/></svg>',
+  audio: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v7a2 2 0 0 0 2 2h2v-8H5v-1a7 7 0 0 1 14 0v1h-2v8h2a2 2 0 0 0 2-2v-7a9 9 0 0 0-9-9z"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>',
   fs: '<svg viewBox="0 0 24 24"><path d="M5 5h5v2H7v3H5zm9 0h5v5h-2V7h-3zM5 14h2v3h3v2H5zm12 0h2v5h-5v-2h3z"/></svg>',
   cc: '<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM11 11H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z"/></svg>',
@@ -917,12 +928,19 @@ function playerShell(v, title) {
   const speeds = [0.75, 1, 1.25, 1.5, 2];
   const menu = el("div", { class: "menu", hidden: true });
   menu.addEventListener("click", (e) => e.stopPropagation());
-  const renderMenu = () => {
-    const secs = (typeof playerMenu === "function" ? playerMenu() : []).concat([{ title: "Speed", items: speeds.map((sp) => ({ label: sp === 1 ? "Normal" : sp + "×", active: v.playbackRate === sp, pick: () => { v.playbackRate = sp; } })) }]);
-    menu.replaceChildren(...secs.filter((x) => x.title === "Speed" || x.items.length > 2).map((sec) => el("div", {}, el("div", { class: "mh" }, sec.title),
+  const base = typeof playerMenu === "function" ? playerMenu() : [];
+  const has = (t) => base.some((x) => x.title === t && x.items.length > 2);
+  const spd = el("button", { class: "pb", "aria-label": "Playback speed", onclick: (e) => { e.stopPropagation(); openMenu("speed"); show(); } }, "1\u00D7");
+  const renderMenu = (kind) => {
+    const speedSec = { title: "Speed", items: speeds.map((sp) => ({ label: sp === 1 ? "Normal" : sp + "\u00D7", active: v.playbackRate === sp, pick: () => { v.playbackRate = sp; spd.textContent = sp + "\u00D7"; } })) };
+    const want = { audio: ["Audio"], settings: ["Quality", "Server"], speed: ["Speed"] }[kind];
+    const secs = (typeof playerMenu === "function" ? playerMenu() : []).concat([speedSec]).filter((x) => want.includes(x.title) && (x.title === "Speed" || x.items.length > 2));
+    menu.replaceChildren(...secs.map((sec) => el("div", {}, el("div", { class: "mh" }, sec.title),
       ...sec.items.map((it) => el("button", { class: "mi" + (it.active ? " on" : ""), onclick: (e) => { e.stopPropagation(); menu.hidden = true; it.pick(); show(); } }, el("span", { class: "ck" }, it.active ? "\u2713" : ""), it.label)))));
   };
-  const gear = mk("gear", "Settings", () => { menu.hidden = !menu.hidden; if (!menu.hidden) renderMenu(); });
+  const openMenu = (kind) => { if (!menu.hidden && menu.dataset.kind === kind) { menu.hidden = true; return; } menu.dataset.kind = kind; renderMenu(kind); menu.hidden = false; };
+  const audioBtn = has("Audio") ? mk("audio", "Audio", () => openMenu("audio")) : null;
+  const gear = has("Quality") || has("Server") ? mk("gear", "Quality and server", () => openMenu("settings")) : null;
   const hasCc = v.querySelectorAll("track").length > 0; let ccOn = !!v.querySelector("track[default]");
   const setCc = () => [...v.textTracks].forEach((t, i) => { t.mode = ccOn && i === 0 ? "showing" : "disabled"; });
   const cc = hasCc ? mk("cc", "Subtitles", () => { ccOn = !ccOn; setCc(); cc.classList.toggle("on", ccOn); }, ccOn ? "on" : "") : null;
@@ -970,7 +988,7 @@ function playerShell(v, title) {
     el("div", { class: "ctl top" }, el("span", { class: "ttl" }, title)),
     el("div", { class: "ctl mid" }, bk, big, fw),
     el("div", { class: "ctl bot" }, el("div", { class: "prr" }, bar, tm),
-      el("div", { class: "btns" }, small, mute, vol, el("span", { class: "sp" }), ...[cc, gear, fsBtn].filter(Boolean))));
+      el("div", { class: "btns" }, small, mute, vol, el("span", { class: "sp" }), ...[cc, audioBtn, gear, spd, fsBtn].filter(Boolean))));
   setIcons(false); mute.innerHTML = IC.vol;
   return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
 }
@@ -1113,7 +1131,7 @@ function openDetail(post) {
     playerMenu = () => {
       const uq = (fn) => [...new Set((streams || []).flatMap(fn))];
       const sec = (title, key, vals, all) => ({ title, items: [["All", all], ...vals.map((x) => [x, x])].map(([val, label]) => ({ label, active: f[key] === val, pick: () => { f[key] = val; idx = 0; err = ""; errDetail = ""; draw(); } })) });
-      return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Language", "lang", uq((x) => x._i.langs), "Any")];
+      return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any")];
     };
     videoBox.dataset.title = (meta && meta.title) || post.title || "";
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
@@ -1141,10 +1159,15 @@ function openDetail(post) {
     }
     nodes.push(el("h3", {}, meta?.title || post.title, meta?.year && el("small", {}, ` ${meta.year}`)));
     nodes.push(el("p", {}, meta?.synopsis || (meta ? "No synopsis available." : "")));
+    if (more?.length) nodes.push(el("section", { class: "moresec" }, el("h4", {}, "More Like This"),
+      el("div", { class: "mgrid" }, more.slice(0, 18).map((x) => el("button", { class: "card", onclick: () => { close(); openDetail(x); } },
+        el("img", { src: x.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, x.title))))));
     body.replaceChildren(...nodes);
   }
 
   draw();
+  let more = null;
+  withTimeout(Promise.resolve(p.getMore ? p.getMore({ link: post.link }) : []), 20000).then((l) => { if (!gone) { more = l || []; drawBody(); } }).catch(() => {});
   withTimeout(p.getMeta({ link: post.link })).then((m) => {
     if (gone) return;
     meta = m || {};
@@ -1267,8 +1290,33 @@ async function renderHome() {
     rowsData.push({ row, items }); $("#home").append(row);
   });
   setNote(rowsData.length ? "" : "No titles found.");
-  applyView(); heroFrom(rowsData[0]?.items);
+  applyView(); heroFrom(rowsData[0]?.items); setTimeout(moreRows, 0);
 }
+const GENRES = ["Action", "Comedy", "Drama", "Thriller", "Sci-Fi", "Horror", "Animation", "Adventure", "Crime", "Romance", "Fantasy", "Mystery", "Family", "Documentary", "History", "War", "Biography", "Sport", "Western"];
+const planAt = (i) => {
+  const G = GENRES.length, page = Math.floor(i / (2 * G)) + 1, j = i % (2 * G), g = GENRES[Math.floor(j / 2)], type = j % 2 ? "series" : "movie";
+  return { type, page, filter: `${type}/top/genre=${g}`, title: `${g} ${type === "movie" ? "Movies" : "Series"}${page > 1 ? ` \u00B7 Part ${page}` : ""}` };
+};
+const cursor = { all: 0, movie: 0, series: 0 }, seenRows = new Set(); let loadingRows = false;
+const nearEnd = () => $("#sent").getBoundingClientRect().top < innerHeight + 700;
+async function moreRows() { // endless scroll: genre rows, then the same genres page after page
+  const p = cur();
+  if (loadingRows || S.query || !p || !S.providers.some((x) => x.tmdb) || !rowsData.length) return;
+  loadingRows = true;
+  try {
+    for (let added = 0, tries = 0; added < 2 && tries < 8; tries++) {
+      const i = cursor[view]++, plan = planAt(view === "all" ? i : i * 2 + (view === "series" ? 1 : 0)), key = plan.filter + "|" + plan.page;
+      if (seenRows.has(key)) continue;
+      seenRows.add(key);
+      const items = await withTimeout(p.getPosts({ filter: plan.filter, page: plan.page })).catch(() => []);
+      if (!items.length) continue;
+      const row = el("section", { class: "rowsec", "data-k": plan.type }, el("h2", {}, plan.title), el("div", { class: "row" }, items.map(card)));
+      rowsData.push({ row, items }); $("#home").append(row); applyView(); added++;
+    }
+  } finally { loadingRows = false; }
+  if (nearEnd()) moreRows();
+}
+new IntersectionObserver((e) => { if (e[0].isIntersecting) moreRows(); }, { rootMargin: "700px" }).observe($("#sent"));
 async function heroFrom(items) {
   const h = $("#hero");
   if (!items?.length) { h.hidden = true; return; }
@@ -1292,7 +1340,7 @@ $("#menu").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   view = b.dataset.v; $("#search").value = ""; if (S.query) doSearch("");
   [...$("#menu").children].forEach((x) => x.classList.toggle("on", x === b)); applyView();
-  $("#hero").style.display = view === "all" && !S.query ? "" : "none"; scrollTo(0, 0);
+  $("#hero").style.display = view === "all" && !S.query ? "" : "none"; scrollTo(0, 0); moreRows();
 });
 addEventListener("scroll", () => $("#top").classList.toggle("solid", scrollY > 20), { passive: true });
 

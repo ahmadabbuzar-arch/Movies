@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reel Room</title>
+<style>
+:root{--bg:#16262b;--panel:#1f343a;--ink:#f2efe9;--mute:#9db0b3;--amber:#f2b544;--line:#31484e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+[hidden]{display:none!important}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:20px clamp(16px,4vw,48px);border-bottom:1px solid var(--line)}
+h1{margin:0;font:700 1.8rem Georgia,serif;letter-spacing:.01em;color:var(--amber)}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+input,select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;max-width:100%}
+input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+main{padding:20px clamp(16px,4vw,48px)}
+nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px}
+nav button,.alts button{background:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;white-space:nowrap}
+nav .on,.alts .on{background:var(--amber);border-color:var(--amber);color:#1b1b1b}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
+.card{background:none;border:0;padding:0;text-align:left;cursor:pointer}
+.card img{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--panel);border-radius:4px;display:block}
+.card span{display:block;margin-top:6px;font-size:.9rem;color:var(--mute)}
+.card:hover span{color:var(--ink)}
+.note{padding:8px 0;color:var(--mute);margin:0}.err{color:#ff9b8a}.ok{color:#8fd694}
+.empty{max-width:520px;margin:12vh auto;padding:0 20px}
+.empty h2{font:700 1.6rem Georgia,serif;margin:0 0 8px}
+code{background:var(--panel);padding:1px 6px;border-radius:4px;word-break:break-all}
+.overlay{position:fixed;inset:0;background:rgba(5,12,14,.85);display:grid;place-items:start center;overflow:auto;padding:4vh 12px;z-index:5}
+.detail{background:var(--panel);width:min(900px,100%);border-radius:8px;padding:16px;position:relative}
+.detail video,.novid{width:100%;aspect-ratio:16/9;background:#000;border-radius:6px;display:block}
+.novid{display:grid;place-items:center;color:var(--mute);padding:16px;text-align:center}
+.close{position:absolute;top:-2px;right:12px;transform:translateY(-100%);background:none;border:0;color:var(--mute);cursor:pointer}
+.alts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.alts b{font-size:.9rem}
+.detail h2{font:700 1.4rem Georgia,serif;margin:14px 0 4px}.detail small{color:var(--mute);font:400 1rem system-ui}
+.detail h3{font:700 1.1rem Georgia,serif;margin:8px 0 0}
+.detail p{color:var(--mute);max-width:70ch;margin:0}
+button.addp,.primary,.plist button,.more{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:8px 14px;cursor:pointer;white-space:nowrap}
+.primary{background:var(--amber);border-color:var(--amber);color:#1b1b1b;font-weight:600}
+.primary:disabled,.plist button:disabled{opacity:.5;cursor:default}
+.empty .primary{margin-top:16px}
+.manage{display:flex;flex-direction:column;gap:12px;max-width:560px}
+.manage h2,.manage h3{margin:0}
+.manage input[type=file],.manage input[type=text],.manage input[type=url]{width:100%}
+.plist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.plist li{display:grid;gap:6px;border:1px solid var(--line);border-radius:6px;padding:8px 12px}
+.plist .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.plist small{color:var(--mute)}
+.more{display:block;margin:20px auto 0}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Reel Room</h1>
+  <div class="tools">
+    <input id="search" type="search" placeholder="Search titles" aria-label="Search titles" hidden>
+    <select id="psel" aria-label="Provider" hidden></select>
+    <button class="addp" id="addp">+ Provider</button>
+  </div>
+</header>
+<main>
+  <nav id="nav"></nav>
+  <p id="note" class="note"></p>
+  <div class="grid" id="grid"></div>
+  <button class="more" id="more" hidden>Load more</button>
+</main>
+<section class="empty" id="empty" hidden>
+  <h2>No provider connected</h2>
+  <p>Upload a provider <code>.zip</code> to get started. Native (<code>index.js</code>) and Vega-style providers both work.</p>
+  <button class="primary" id="empty-add">Upload provider zip</button>
+</section>
+<div id="modal"></div>
+<div id="detail"></div>
+
+<!-- Built-in demo provider: public-domain films from the Internet Archive (no API key) -->
+<script type="text/plain" id="demo-provider">
+const API = "https://archive.org";
+const img = (id) => `${API}/services/img/${id}`;
+const toPost = (d) => ({ title: d.title, link: d.identifier, image: img(d.identifier) });
+
+async function list(q, page, ctx) {
+  const url = `${API}/advancedsearch.php?q=${encodeURIComponent(q)}` +
+    `&fl[]=identifier&fl[]=title&sort[]=downloads+desc&rows=24&page=${page}&output=json`;
+  const r = await ctx.fetch(url);
+  if (!r.ok) throw new Error(`Archive.org ${r.status}`);
+  return (await r.json()).response.docs.map(toPost);
+}
+
+export default {
+  id: "archive-demo",
+  name: "Internet Archive (public domain)",
+  async getCatalog() {
+    return [
+      { title: "Popular films", filter: "collection:feature_films" },
+      { title: "Sci-Fi & Horror", filter: "collection:SciFi_Horror" },
+      { title: "Film Noir", filter: "collection:film_noir" },
+      { title: "Comedy", filter: "collection:comedy_films" },
+    ];
+  },
+  getPosts: ({ filter, page }, ctx) =>
+    list(`${filter || "collection:feature_films"} AND mediatype:movies`, page, ctx),
+  getSearchPosts: ({ query, page }, ctx) =>
+    list(`title:(${query}) AND collection:feature_films AND mediatype:movies`, page, ctx),
+  async getMeta({ link }, ctx) {
+    const m = await (await ctx.fetch(`${API}/metadata/${link}`)).json();
+    const md = m.metadata || {};
+    const text = (v) => (Array.isArray(v) ? v[0] : v) || "";
+    return {
+      title: text(md.title), image: img(link),
+      synopsis: text(md.description).replace(/<[^>]+>/g, ""),
+      year: text(md.year || md.date).slice(0, 4), type: "movie",
+    };
+  },
+  async getStream({ link }, ctx) {
+    const m = await (await ctx.fetch(`${API}/metadata/${link}`)).json();
+    return (m.files || [])
+      .filter((f) => /\.mp4$/i.test(f.name))
+      .sort((a, b) => (+b.size || 0) - (+a.size || 0))
+      .slice(0, 3)
+      .map((f) => ({ server: "archive.org", link: `${API}/download/${link}/${encodeURIComponent(f.name)}`, type: "mp4", quality: f.name }));
+  },
+};
+</script>
+
+<script>
+"use strict";
+/* ===================== small helpers ===================== */
+const $ = (s) => document.querySelector(s);
+const enc = encodeURIComponent;
+const store = {
+  get: (k, d = "") => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
+};
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v === true) n.setAttribute(k, "");
+    else if (v !== false && v != null) n.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return n;
+}
+const withTimeout = (p, ms = 30000) =>
+  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("Provider timeout")), ms))]);
+const loadScript = (src) => new Promise((res, rej) => {
+  const s = el("script", { src });
+  s.onload = res; s.onerror = () => rej(new Error("Could not load " + src));
+  document.head.append(s);
+});
+
+/* ===================== proxy-aware fetch ===================== */
+const getProxy = () => (store.get("proxyUrl") || "/api/proxy").trim();
+const proxyUrl = (url, headers = {}) => `${getProxy()}?u=${enc(url)}&h=${enc(JSON.stringify(headers))}`;
+const FORBIDDEN = /^(referer|user-agent|origin|cookie|host|accept-encoding|sec-.*)$/i;
+
+// Direct first (cheap); falls back to the proxy when CORS blocks it or forbidden headers are needed.
+async function pfetch(input, init = {}) {
+  const url = typeof input === "string" ? input : input.url;
+  const headers = init.headers instanceof Headers ? Object.fromEntries(init.headers) : { ...(init.headers || {}) };
+  const method = (init.method || "GET").toUpperCase();
+  const viaProxy = () => fetch(proxyUrl(url, headers), {
+    method, body: init.body, signal: init.signal,
+    headers: headers["Content-Type"] || headers["content-type"] ? { "Content-Type": headers["Content-Type"] || headers["content-type"] } : undefined,
+  });
+  if (Object.keys(headers).some((k) => FORBIDDEN.test(k))) return viaProxy();
+  try {
+    return await fetch(url, { ...init, method, headers });
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    return viaProxy(); // CORS / mixed content -> proxy
+  }
+}
+
+/* ===================== zip reader (browser, no library) ===================== */
+async function readZip(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 22 - 65535); i--)
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("Not a valid zip file");
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  if (count === 0xffff || p === 0xffffffff) throw new Error("Zip64 archives are not supported");
+  const dec = new TextDecoder();
+  const files = new Map();
+  for (let n = 0; n < count; n++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("Corrupt zip directory");
+    const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true);
+    const csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true);
+    const name = dec.decode(u8.subarray(p + 46, p + 46 + nl)).replace(/\\/g, "/").replace(/^\.\//, "");
+    p += 46 + nl + xl + cl;
+    if (name.endsWith("/") || flags & 1) continue;
+    if (!/\.(js|cjs|mjs|json)$/i.test(name) || /(^|\/)(node_modules|__MACOSX)\//.test(name)) continue;
+    if (name.split("/").includes("..") || name.startsWith("/")) continue; // unsafe path
+    if (usize > 5 * 1024 * 1024) continue;
+    const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+    const raw = u8.subarray(start, start + csize);
+    let data;
+    if (method === 0) data = raw;
+    else if (method === 8) {
+      const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      data = new Uint8Array(await new Response(stream).arrayBuffer());
+    } else continue;
+    files.set(name, dec.decode(data));
+  }
+  return files;
+}
+
+// Find provider folders inside the unzipped files: index.js, or posts.js + stream.js
+function findProviders(files) {
+  const has = (d, f) => files.has(d ? `${d}/${f}` : f);
+  const dirs = new Set([...files.keys()].map((k) => (k.includes("/") ? k.slice(0, k.lastIndexOf("/")) : "")));
+  const looks = (d) => has(d, "index.js") || (has(d, "posts.js") && has(d, "stream.js"));
+  if (looks("")) return [{ dir: "", files: Object.fromEntries(files) }];
+  const kept = [];
+  for (const d of [...dirs].filter(looks).sort((a, b) => a.split("/").length - b.split("/").length))
+    if (!kept.some((k) => d.startsWith(k + "/"))) kept.push(d);
+  return kept.map((d) => ({
+    dir: d,
+    files: Object.fromEntries([...files].filter(([k]) => k.startsWith(d + "/")).map(([k, v]) => [k.slice(d.length + 1), v])),
+  }));
+}
+
+/* ===================== provider runtime ===================== */
+const ESM_RE = /^\s*(import\s[^(]*?from\s|import\s*["'{*]|export\s+(default|const|let|var|function|async|class|\{|\*))/m;
+
+function esmToCjs(src) {
+  const names = [], extra = [];
+  src = src
+    .replace(/^\s*import\s+\*\s+as\s+(\w+)\s+from\s+["']([^"']+)["'];?/gm, 'const $1 = require("$2");')
+    .replace(/^\s*import\s+\{([^}]*)\}\s+from\s+["']([^"']+)["'];?/gm, (_m, a, b) => `const {${a.replace(/\s+as\s+/g, ": ")}} = require("${b}");`)
+    .replace(/^\s*import\s+(\w+)\s+from\s+["']([^"']+)["'];?/gm, 'const $1 = (m => (m && m.default !== undefined ? m.default : m))(require("$2"));')
+    .replace(/^\s*import\s+["']([^"']+)["'];?/gm, 'require("$1");')
+    .replace(/^(\s*)export\s+default\s+/gm, "$1exports.default = ")
+    .replace(/^(\s*)export\s+(const|let|var)\s+(\w+)/gm, (_m, s, k, n) => { names.push(n); return `${s}${k} ${n}`; })
+    .replace(/^(\s*)export\s+((?:async\s+)?function\*?\s+(\w+))/gm, (_m, s, d, n) => { names.push(n); return `${s}${d}`; })
+    .replace(/^(\s*)export\s+(class\s+(\w+))/gm, (_m, s, d, n) => { names.push(n); return `${s}${d}`; })
+    .replace(/^\s*export\s*\{([^}]*)\};?/gm, (_m, list) => {
+      list.split(",").map((x) => x.trim()).filter(Boolean).forEach((x) => { const [a, b] = x.split(/\s+as\s+/); extra.push(`exports.${b || a} = ${a};`); });
+      return "";
+    });
+  return `${src}\n${names.map((n) => `exports.${n} = ${n};`).join("\n")}\n${extra.join("\n")}`;
+}
+
+// axios replacement built on pfetch
+function makeAxios(defaults = {}) {
+  async function request(cfg) {
+    cfg = { ...defaults, ...cfg, headers: { ...defaults.headers, ...cfg.headers } };
+    let url = cfg.url || "";
+    if (cfg.baseURL && !/^https?:/i.test(url)) url = cfg.baseURL.replace(/\/$/, "") + "/" + url.replace(/^\//, "");
+    if (cfg.params) {
+      const sp = new URLSearchParams();
+      for (const [k, v] of Object.entries(cfg.params)) if (v != null) sp.append(k, v);
+      url += (url.includes("?") ? "&" : "?") + sp;
+    }
+    const headers = { ...cfg.headers };
+    const method = (cfg.method || "get").toUpperCase();
+    let body = cfg.data;
+    if (body && typeof body === "object" && !(body instanceof URLSearchParams) && !(body instanceof FormData) &&
+        !(body instanceof Blob) && !(body instanceof ArrayBuffer)) {
+      body = JSON.stringify(body);
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["Content-Type"] = "application/json";
+    } else if (body instanceof URLSearchParams) {
+      body = body.toString();
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["Content-Type"] = "application/x-www-form-urlencoded";
+    }
+    const res = await pfetch(url, { method, headers, body: method === "GET" || method === "HEAD" ? undefined : body, signal: cfg.signal });
+    const rt = cfg.responseType;
+    let data;
+    if (rt === "arraybuffer") data = await res.arrayBuffer();
+    else if (rt === "blob") data = await res.blob();
+    else {
+      data = await res.text();
+      if (!rt || rt === "json") { try { data = JSON.parse(data); } catch { /* keep text */ } }
+    }
+    const out = { data, status: res.status, statusText: res.statusText, headers: Object.fromEntries(res.headers.entries()), config: cfg, request: { responseURL: res.headers.get("x-final-url") || res.url } };
+    if (!(cfg.validateStatus || ((s) => s >= 200 && s < 300))(res.status)) {
+      const err = new Error(`Request failed with status code ${res.status}`);
+      Object.assign(err, { response: out, isAxiosError: true, config: cfg });
+      throw err;
+    }
+    return out;
+  }
+  const inst = (a, b) => (typeof a === "string" ? request({ ...b, url: a }) : request(a));
+  inst.request = request;
+  for (const m of ["get", "delete", "head", "options"]) inst[m] = (u, c) => request({ ...c, url: u, method: m });
+  for (const m of ["post", "put", "patch"]) inst[m] = (u, d, c) => request({ ...c, url: u, data: d, method: m });
+  inst.create = (c) => makeAxios({ ...defaults, ...c });
+  inst.defaults = { headers: {} };
+  inst.isAxiosError = (e) => !!e?.isAxiosError;
+  inst.interceptors = { request: { use() {} }, response: { use() {} } };
+  return inst;
+}
+
+// cheerio replacement: jQuery running on a DOMParser document (same chaining API for common use)
+let jqPromise;
+const ensureJQuery = () => (jqPromise ||= loadScript("https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js")
+  .then(() => { const j = window.jQuery.noConflict(true); return j; })
+  .catch((e) => { jqPromise = null; throw e; }));
+
+function makeCheerio(jq) {
+  return {
+    load(html) {
+      const doc = new DOMParser().parseFromString(String(html), "text/html");
+      const $ = (sel, ctx) => {
+        if (typeof sel === "string" && !/^\s*</.test(sel)) {
+          if (typeof ctx === "string") return jq(ctx, doc).find(sel);
+          return jq(sel, ctx || doc);
+        }
+        return jq(sel);
+      };
+      $.html = (x) => (x ? (x.jquery ? x.map((_i, e) => e.outerHTML).get().join("") : x.outerHTML) : doc.documentElement.outerHTML);
+      $.text = (x) => (x ? jq(x).text() : doc.documentElement.textContent);
+      $.root = () => jq(doc.documentElement);
+      $.fn = jq.fn;
+      return $;
+    },
+  };
+}
+const missingDep = (name) => new Proxy(function () {}, {
+  get: (_t, k) => { if (typeof k === "symbol") return undefined; throw new Error(`"${name}" could not be loaded (offline?)`); },
+  apply: () => { throw new Error(`"${name}" could not be loaded (offline?)`); },
+});
+
+const commonHeaders = {
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+};
+const extractors = new Proxy({}, {
+  get: (_t, name) => async () => { console.warn(`[extractor] "${String(name)}" is not supported in this app`); return []; },
+});
+
+const dirname = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+function resolvePath(dir, rel) {
+  const out = dir ? dir.split("/") : [];
+  for (const part of rel.split("/")) {
+    if (part === "." || part === "") continue;
+    if (part === "..") out.pop(); else out.push(part);
+  }
+  return out.join("/");
+}
+
+async function loadProvider(rec) {
+  let cheerio;
+  try { cheerio = makeCheerio(await ensureJQuery()); } catch { cheerio = missingDep("cheerio"); }
+  const axios = makeAxios();
+  const cache = {};
+  const files = rec.files;
+
+  function runModule(path) {
+    if (cache[path]) return cache[path].exports;
+    let code = files[path];
+    if (ESM_RE.test(code)) code = esmToCjs(code);
+    const module = { exports: {} };
+    cache[path] = module;
+    const dir = dirname(path);
+    const req = (name) => {
+      if (name === "axios") return axios;
+      if (name === "cheerio") return cheerio;
+      if (!name.startsWith(".")) throw new Error(`Module "${name}" is not available in the browser version`);
+      const base = resolvePath(dir, name);
+      const hit = [base, base + ".js", base + ".json", base + "/index.js"].find((c) => c in files);
+      if (!hit) throw new Error(`Cannot find "${name}" (from ${path})`);
+      return hit.endsWith(".json") ? JSON.parse(files[hit]) : runModule(hit);
+    };
+    new Function("exports", "require", "module", "__filename", "__dirname", "process", code + `\n//# sourceURL=provider/${path}`)(
+      module.exports, req, module, path, dir, { env: {} });
+    return module.exports;
+  }
+  const load = (path) => {
+    const m = runModule(path);
+    return m.default && typeof m.default === "object" ? { ...m, ...m.default } : { ...m };
+  };
+
+  let vega = {};
+  for (const n of ["catalog", "posts", "meta", "stream", "episodes"]) if (`${n}.js` in files) vega = { ...vega, ...load(`${n}.js`) };
+  const raw = { ...vega, ...("index.js" in files ? load("index.js") : {}) };
+  if (typeof raw.getPosts !== "function" || typeof raw.getStream !== "function")
+    throw new Error(`needs getPosts and getStream (found: ${Object.keys(raw).join(", ") || "nothing"})`);
+
+  let manifest = {};
+  try { manifest = JSON.parse(files["manifest.json"] || "{}"); } catch { /* ignore */ }
+  const folder = rec.folder || "provider";
+  const id = typeof raw.id === "string" && raw.id ? raw.id : folder.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "provider";
+  const name = raw.name || manifest.display_name || manifest.name || folder.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const ctx = {
+    fetch: pfetch, axios, cheerio, commonHeaders, extractors,
+    getBaseUrl: async (key) => {
+      if (rec.baseUrl) return rec.baseUrl;
+      try { const j = await (await pfetch("https://himanshu8443.github.io/providers/modflix.json")).json(); return j?.[key || id]?.url || ""; }
+      catch { return ""; }
+    },
+  };
+  ctx.providerContext = ctx;
+  const call = (fn, args) => fn.call(raw, { providerValue: id, provider: id, signal: new AbortController().signal, providerContext: ctx, ...args }, ctx);
+
+  return {
+    id, name, rec,
+    async getCatalog() {
+      if (typeof raw.getCatalog === "function") return call(raw.getCatalog, {});
+      if (Array.isArray(raw.catalog)) return raw.catalog.map((c) => ({ title: c.title, filter: c.filter }));
+      return [{ title: "Home", filter: "" }];
+    },
+    getPosts: ({ filter, page }) => call(raw.getPosts, { filter, page }),
+    async getSearchPosts({ query, page }) {
+      return typeof raw.getSearchPosts === "function" ? call(raw.getSearchPosts, { query, searchQuery: query, page }) : [];
+    },
+    async getMeta({ link }) { return typeof raw.getMeta === "function" ? call(raw.getMeta, { link }) : { title: "" }; },
+    getStream: ({ link, type }) => call(raw.getStream, { link, type: type || "movie" }),
+    async getEpisodes({ link }) { return typeof raw.getEpisodes === "function" ? call(raw.getEpisodes, { link, url: link }) : []; },
+  };
+}
+
+/* ===================== storage (IndexedDB) ===================== */
+const idb = (() => {
+  let dbp;
+  const open = () => (dbp ||= new Promise((res, rej) => {
+    const r = indexedDB.open("reelroom", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("providers", { keyPath: "id" });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction("providers", mode);
+      const rq = fn(t.objectStore("providers"));
+      t.oncomplete = () => res(rq?.result);
+      t.onerror = () => rej(t.error);
+    });
+  };
+  return { all: () => tx("readonly", (s) => s.getAll()), put: (r) => tx("readwrite", (s) => s.put(r)), del: (id) => tx("readwrite", (s) => s.delete(id)) };
+})();
+
+/* ===================== app state ===================== */
+const S = { providers: [], failed: [], pid: "", catalog: [], filter: "", query: "", posts: [], page: 1, hasMore: false, token: 0 };
+const cur = () => S.providers.find((p) => p.id === S.pid);
+
+async function initProviders() {
+  let recs = [];
+  try {
+    recs = await idb.all();
+    if (!store.get("seeded")) {
+      const demo = { id: "archive-demo", folder: "archive-demo", files: { "index.js": $("#demo-provider").textContent }, baseUrl: "" };
+      if (!recs.some((r) => r.id === demo.id)) { await idb.put(demo); recs.push(demo); }
+      store.set("seeded", "1");
+    }
+  } catch (e) {
+    console.warn("IndexedDB unavailable, using in-memory providers", e);
+    recs = [{ id: "archive-demo", folder: "archive-demo", files: { "index.js": $("#demo-provider").textContent }, baseUrl: "" }];
+  }
+  S.providers = []; S.failed = [];
+  for (const r of recs) {
+    try { S.providers.push(await loadProvider(r)); }
+    catch (e) { S.failed.push({ id: r.id, error: e.message }); console.warn(`[skip] ${r.id}:`, e); }
+  }
+}
+
+function setNote(text, isErr) {
+  const n = $("#note");
+  n.textContent = text || "";
+  n.className = "note" + (isErr ? " err" : "");
+}
+
+function renderShell() {
+  const none = S.providers.length === 0;
+  $("#empty").hidden = !none;
+  $("main").hidden = none;
+  $("#search").hidden = none;
+  const sel = $("#psel");
+  sel.hidden = S.providers.length < 2;
+  sel.replaceChildren(...S.providers.map((p) => el("option", { value: p.id, selected: p.id === S.pid }, p.name)));
+}
+
+function renderNav() {
+  const nav = $("#nav");
+  nav.hidden = !!S.query;
+  nav.replaceChildren(...S.catalog.map((c) =>
+    el("button", { class: c.filter === S.filter ? "on" : "", onclick: () => { S.filter = c.filter; renderNav(); fetchPosts(true); } }, c.title)));
+}
+
+function renderGrid(append) {
+  const grid = $("#grid");
+  if (!append) grid.replaceChildren();
+  const start = append ? grid.children.length : 0;
+  for (const p of S.posts.slice(start)) {
+    grid.append(el("button", { class: "card", onclick: () => openDetail(p) },
+      el("img", { src: p.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, p.title)));
+  }
+  $("#more").hidden = !S.hasMore;
+}
+
+async function fetchPosts(reset) {
+  const p = cur();
+  if (!p) return;
+  const token = ++S.token;
+  if (reset) { S.page = 1; S.posts = []; renderGrid(false); } else S.page++;
+  setNote("Loading…");
+  try {
+    const list = await withTimeout(S.query ? p.getSearchPosts({ query: S.query, page: S.page }) : p.getPosts({ filter: S.filter, page: S.page }));
+    if (token !== S.token) return;
+    const items = Array.isArray(list) ? list.filter((x) => x && x.link) : [];
+    S.posts = reset ? items : S.posts.concat(items);
+    S.hasMore = items.length > 0;
+    renderGrid(!reset);
+    setNote(S.posts.length ? "" : "No titles found.");
+  } catch (e) {
+    if (token !== S.token) return;
+    if (reset) S.posts = [];
+    S.hasMore = false; renderGrid(!reset);
+    setNote(e.message, true);
+  }
+}
+
+async function selectProvider(id) {
+  S.pid = id; S.query = ""; $("#search").value = ""; S.catalog = []; S.filter = "";
+  renderShell();
+  const p = cur();
+  if (!p) { S.posts = []; renderGrid(false); renderNav(); setNote(""); return; }
+  try {
+    S.catalog = (await withTimeout(p.getCatalog())) || [];
+    S.filter = S.catalog[0]?.filter ?? "";
+  } catch (e) { setNote(e.message, true); }
+  renderNav();
+  fetchPosts(true);
+}
+
+/* ===================== player ===================== */
+let hlsLoader;
+const loadHls = () => (hlsLoader ||= loadScript("https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js")
+  .then(() => window.Hls).catch((e) => { hlsLoader = null; throw e; }));
+
+function mountPlayer(box, s, poster, onError) {
+  const v = el("video", { controls: true, autoplay: true, playsinline: true });
+  if (poster) v.poster = poster;
+  box.replaceChildren(v);
+  const hdrs = s.headers && Object.keys(s.headers).length ? s.headers : null;
+  const isHls = s.type === "m3u8" || /\.m3u8(\?|$)/i.test(s.link);
+  // try the direct URL first (free); fall back to the proxy if it fails or headers are required
+  const urls = hdrs ? [proxyUrl(s.link, hdrs)] : [s.link, proxyUrl(s.link, {})];
+  let attempt = 0, hls = null, dead = false;
+  const start = () => {
+    if (dead) return;
+    const src = urls[attempt];
+    hls?.destroy(); hls = null;
+    const fail = (msg) => { if (attempt < urls.length - 1) { attempt++; start(); } else onError(msg); };
+    if (isHls && !v.canPlayType("application/vnd.apple.mpegurl")) {
+      loadHls().then((H) => {
+        if (dead) return;
+        if (!H?.isSupported()) return onError("This browser cannot play HLS streams.");
+        hls = new H();
+        hls.loadSource(src);
+        hls.attachMedia(v);
+        hls.on(H.Events.ERROR, (_e, d) => d.fatal && fail("Stream failed to load."));
+      }).catch((e) => onError(e.message));
+    } else {
+      v.onerror = () => fail("This video could not be played.");
+      v.src = src;
+    }
+  };
+  start();
+  return () => { dead = true; hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
+}
+
+/* ===================== detail view ===================== */
+function openDetail(post) {
+  const p = cur();
+  const host = $("#detail");
+  let meta = null, streams = null, err = "", idx = 0, eps = null, stopPlayer = null, gone = false;
+
+  const close = () => { gone = true; stopPlayer?.(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
+  const esc = (e) => e.key === "Escape" && close();
+  window.addEventListener("keydown", esc);
+
+  const videoBox = el("div");
+  const body = el("div");
+  const article = el("article", { class: "detail", onclick: (e) => e.stopPropagation() },
+    el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), videoBox, body);
+  host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
+
+  const play = (link, type) => {
+    streams = null; err = ""; idx = 0; draw();
+    withTimeout(p.getStream({ link, type })).then((s) => {
+      if (gone) return;
+      streams = Array.isArray(s) ? s.filter((x) => x && x.link) : [];
+      if (!streams.length) err = "No playable stream found.";
+      draw();
+    }).catch((e) => { if (!gone) { err = e.message; draw(); } });
+  };
+  const showEpisodes = (g) => {
+    err = "";
+    withTimeout(p.getEpisodes({ link: g.episodesLink })).then((list) => { eps = { title: g.title, list: list || [] }; draw(); })
+      .catch((e) => { err = e.message; draw(); });
+  };
+
+  function draw() {
+    if (gone) return;
+    const s = streams?.[idx];
+    stopPlayer?.(); stopPlayer = null;
+    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m) => { err = m; drawBody(); });
+    else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : "Loading video…")));
+    drawBody();
+  }
+  function drawBody() {
+    const s = streams?.[idx];
+    const nodes = [];
+    if (s && err) nodes.push(el("p", { class: "note err" }, err));
+    if (streams?.length > 1)
+      nodes.push(el("div", { class: "alts" }, streams.map((x, n) =>
+        el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; idx = n; draw(); } }, x.server || x.quality || `Source ${n + 1}`))));
+    if (meta?.linkList?.length) {
+      for (const g of meta.linkList) {
+        nodes.push(el("div", { class: "alts" },
+          el("b", {}, g.title || g.quality || "Links"),
+          (g.directLinks || []).map((d, k) => el("button", { onclick: () => play(d.link, d.type || meta.type) }, d.title || `Play ${k + 1}`)),
+          g.episodesLink && el("button", { onclick: () => showEpisodes(g) }, "Episodes")));
+      }
+      if (eps) nodes.push(el("div", { class: "alts" }, el("b", {}, eps.title || "Episodes"),
+        eps.list.length === 0 && el("span", { class: "note" }, "No episodes found."),
+        eps.list.map((e, k) => el("button", { onclick: () => play(e.link, "series") }, e.title || `Episode ${k + 1}`))));
+    }
+    nodes.push(el("h3", {}, meta?.title || post.title, meta?.year && el("small", {}, ` ${meta.year}`)));
+    nodes.push(el("p", {}, meta?.synopsis || (meta ? "No synopsis available." : "")));
+    body.replaceChildren(...nodes);
+  }
+
+  draw();
+  withTimeout(p.getMeta({ link: post.link })).then((m) => {
+    if (gone) return;
+    meta = m || {};
+    if (meta.linkList?.length) {
+      const g = meta.linkList.find((x) => x.directLinks?.length);
+      if (g) play(g.directLinks[0].link, g.directLinks[0].type || meta.type); else draw();
+    } else play(post.link);
+  }).catch((e) => { if (gone) return; meta = {}; err = e.message; play(post.link); });
+}
+
+/* ===================== provider manager ===================== */
+function openManager() {
+  const host = $("#modal");
+  const close = () => { host.replaceChildren(); window.removeEventListener("keydown", esc); };
+  const esc = (e) => e.key === "Escape" && close();
+  window.addEventListener("keydown", esc);
+  let file = null, busy = false, msg = null;
+
+  const draw = () => {
+    const list = S.providers.length
+      ? el("ul", { class: "plist" }, S.providers.map((p) => el("li", {},
+          el("div", { class: "row" }, el("span", {}, p.name),
+            el("button", { disabled: busy, onclick: () => removeProvider(p) }, "Remove")),
+          el("input", { type: "url", placeholder: "Base URL (optional, for providers that need it)", value: p.rec.baseUrl || "",
+            onchange: async (e) => { p.rec.baseUrl = e.target.value.trim(); try { await idb.put(p.rec); } catch { /* memory only */ } } }))))
+      : el("p", { class: "note" }, "No providers installed.");
+    const failed = S.failed.map((f) => el("p", { class: "note err" }, `${f.id}: ${f.error}`));
+    const fileIn = el("input", { type: "file", accept: ".zip,application/zip", onchange: (e) => { file = e.target.files[0] || null; draw(); } });
+    const proxyIn = el("input", { type: "text", value: store.get("proxyUrl"), placeholder: "/api/proxy (default, same site)",
+      onchange: (e) => store.set("proxyUrl", e.target.value.trim()) });
+    const sec = el("section", { class: "detail manage", onclick: (e) => e.stopPropagation() },
+      el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"),
+      el("h2", {}, "Providers"), list, failed,
+      el("h3", {}, "Upload provider zip"),
+      el("p", { class: "note" }, "Native (index.js) and Vega-style (posts.js, meta.js, stream.js…) providers. A zip with many providers installs them all. Provider code runs in your browser, so only upload zips you trust."),
+      fileIn,
+      el("button", { class: "primary", disabled: busy || !file, onclick: upload }, busy ? "Working…" : "Upload & install"),
+      el("h3", {}, "Proxy URL"),
+      el("p", { class: "note" }, "Used for sites that block browsers (CORS) and for streams that need headers. Leave empty to use this site's /api/proxy."),
+      proxyIn,
+      msg && el("p", { class: msg.ok ? "note ok" : "note err", role: "status" }, msg.text));
+    host.replaceChildren(el("div", { class: "overlay", onclick: close }, sec));
+  };
+
+  async function upload() {
+    busy = true; msg = null; draw();
+    try {
+      const files = await readZip(await file.arrayBuffer());
+      const found = findProviders(files);
+      if (!found.length) throw new Error("No provider found in zip (need index.js, or posts.js + stream.js)");
+      const base = file.name.replace(/\.zip$/i, "");
+      const added = [], failed = [];
+      for (const f of found) {
+        const folder = f.dir ? f.dir.split("/").pop() : base;
+        try {
+          const rec = { id: folder, folder, files: f.files, baseUrl: "" };
+          const prov = await loadProvider(rec);
+          rec.id = prov.id;
+          const old = S.providers.find((x) => x.id === prov.id);
+          if (old) rec.baseUrl = old.rec.baseUrl || "";
+          try { await idb.put(rec); } catch { /* memory only */ }
+          S.providers = S.providers.filter((x) => x.id !== prov.id).concat(prov);
+          S.failed = S.failed.filter((x) => x.id !== prov.id);
+          added.push(prov);
+        } catch (e) { failed.push(`${folder}: ${e.message}`); }
+      }
+      if (!added.length) throw new Error(failed.join(" | "));
+      msg = { ok: true, text: `Added ${added.map((a) => `“${a.name}”`).join(", ")}.${failed.length ? " Skipped: " + failed.join(" | ") : ""}` };
+      file = null;
+      await selectProvider(added[0].id);
+    } catch (e) { msg = { ok: false, text: e.message }; }
+    busy = false; draw();
+  }
+
+  async function removeProvider(p) {
+    if (!confirm(`Remove provider “${p.name}”?`)) return;
+    try { await idb.del(p.id); } catch { /* ignore */ }
+    S.providers = S.providers.filter((x) => x.id !== p.id);
+    msg = { ok: true, text: `Removed “${p.name}”.` };
+    if (S.pid === p.id) await selectProvider(S.providers[0]?.id || ""); else renderShell();
+    draw();
+  }
+  draw();
+}
+
+/* ===================== boot ===================== */
+$("#addp").addEventListener("click", openManager);
+$("#empty-add").addEventListener("click", openManager);
+$("#more").addEventListener("click", () => fetchPosts(false));
+$("#psel").addEventListener("change", (e) => selectProvider(e.target.value));
+$("#search").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { S.query = e.target.value.trim(); renderNav(); fetchPosts(true); }
+});
+$("#search").addEventListener("input", (e) => {
+  if (!e.target.value && S.query) { S.query = ""; renderNav(); fetchPosts(true); }
+});
+
+(async () => {
+  await initProviders();
+  await selectProvider(S.providers[0]?.id || "");
+})();
+</script>
+</body>
+</html>

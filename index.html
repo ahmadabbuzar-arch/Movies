@@ -6,58 +6,81 @@
 <meta name="referrer" content="no-referrer">
 <title>Reel Room</title>
 <style>
-:root{--bg:#141414;--panel:#1f1f1f;--ink:#fff;--mute:#a3a3a3;--red:#e50914;--line:#333;--amber:#e50914}
+:root{--bg:#141414;--panel:#1f1f1f;--elev:#2d2d2d;--ink:#fff;--ink2:#bcbcbc;--mute:#808080;--red:#e50914;--redd:#831010;--line:#8c8c8c}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Netflix Sans",Arial,Helvetica,sans-serif}
 button,input,select{font:inherit;color:inherit}
 [hidden]{display:none!important}
-header{position:sticky;top:0;z-index:4;display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px clamp(16px,4vw,48px);background:linear-gradient(#000e,#000a);backdrop-filter:blur(6px)}
-h1{margin:0;font:900 1.7rem system-ui,sans-serif;letter-spacing:.04em;color:var(--red);text-transform:uppercase}
-input,select{background:#000;border:1px solid var(--line);border-radius:4px;padding:8px 12px;max-width:100%}
-#search{width:min(260px,52vw)}
-input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid #fff;outline-offset:2px}
-main{padding:12px clamp(16px,4vw,48px) 40px}
-nav{display:flex;gap:8px;overflow-x:auto;padding:8px 0 14px}
-nav button,.alts button{background:#2a2a2a;border:0;border-radius:4px;padding:7px 16px;cursor:pointer;white-space:nowrap}
-nav .on,.alts .on{background:var(--red);color:#fff}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
-.card{background:none;border:0;padding:0;text-align:left;cursor:pointer;transition:transform .15s}
-.card:hover{transform:scale(1.05)}
+#top{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 4vw;background:linear-gradient(#141414,transparent);transition:background .3s}
+#top.solid{background:#141414}
+.l{display:flex;align-items:center;gap:24px;min-width:0}
+h1{margin:0;font:700 1.6rem Arial,sans-serif;letter-spacing:.02em;color:var(--red);text-transform:uppercase}
+#menu{display:flex;gap:16px}
+#menu button{background:none;border:0;padding:10px 0;font:500 14px/1.3 Arial,sans-serif;letter-spacing:.02em;color:var(--mute);cursor:pointer}
+#menu .on,#menu button:hover{color:#fff}
+input,select{background:#333;border:1px solid var(--line);border-radius:4px;padding:8px 12px;max-width:100%}
+input:focus-visible,select:focus-visible{border-color:#fff;outline:0}
+button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+#search{width:min(240px,40vw)}
+#hero{position:relative;min-height:min(56vw,80vh);background-size:cover;background-position:center top;display:flex;align-items:flex-end;padding:0 4vw 48px;margin-bottom:-24px}
+@media(max-width:600px){#hero{min-height:120vw;padding-bottom:40px}#menu{gap:10px}h1{font-size:1.2rem}}
+.hc{max-width:560px}
+.hc h2{margin:0 0 12px;font:700 clamp(30px,5vw,52px)/1.1 Arial,sans-serif;letter-spacing:-.01em;text-shadow:0 2px 12px #000a}
+.hc p{margin:0 0 20px;color:#fff;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 1px 8px #000a}
+.hb{display:flex;gap:12px}
+.play,.info{border:0;border-radius:4px;padding:12px 24px;font:700 16px/1.2 Arial,sans-serif;cursor:pointer;min-height:44px}
+.play{background:#fff;color:#141414}.play:hover{background:#ffffffbf}
+.info{background:rgba(109,109,110,.7);color:#fff}.info:hover{background:rgba(109,109,110,.45)}
+main{position:relative;padding:76px 0 48px}
+#hero:not([hidden])+main{padding-top:0}
+.rowsec{margin-bottom:12px}
+.rowsec h2{margin:0;padding:0 4vw;font:600 clamp(16px,2vw,24px)/1.3 Arial,sans-serif;color:#e5e5e5}
+.row{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding:14px 4vw 22px;scrollbar-width:none}
+.row::-webkit-scrollbar{display:none}
+.row .card{flex:0 0 clamp(120px,44vw,200px);scroll-snap-align:start}
+@media(min-width:500px){.row .card{flex-basis:24vw}}
+@media(min-width:1100px){.row .card{flex-basis:calc((100vw - 8vw - 40px)/6)}}
+@media(min-width:1800px){.row .card{flex-basis:calc((100vw - 8vw - 56px)/8)}}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:0 4vw}
+@media(min-width:500px){.grid{grid-template-columns:repeat(4,1fr)}}@media(min-width:1100px){.grid{grid-template-columns:repeat(6,1fr)}}
+.card{position:relative;background:none;border:0;padding:0;text-align:left;cursor:pointer;transition:transform .2s,box-shadow .2s;border-radius:4px}
+.card:hover{transform:scale(1.05);z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.7)}
 .card img{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--panel);border-radius:4px;display:block}
-.card span{display:block;margin-top:5px;font-size:.85rem;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card:hover span{color:#fff}
-.note{padding:8px 0;color:var(--mute);margin:0}.err{color:#ff6b6b}.ok{color:#6fcf7f}
-.empty{max-width:520px;margin:18vh auto;padding:0 20px;text-align:center}
-.empty h2{font:800 1.6rem system-ui;margin:0 0 8px}
-.overlay{position:fixed;inset:0;background:#000d;display:grid;place-items:start center;overflow:auto;padding:4vh 12px;z-index:6}
-.detail{background:var(--panel);width:min(920px,100%);border-radius:8px;overflow:hidden;position:relative;padding-bottom:16px}
-.detail>*:not(video):not(.novid):not(div:first-of-type){margin-left:16px;margin-right:16px}
+.card span{display:block;padding:6px 2px 0;font-size:12px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{padding:8px 4vw;color:var(--ink2);margin:0}.err{color:#ff6b6b}
+.empty{max-width:520px;margin:25vh auto;padding:0 20px;text-align:center}
+.overlay{position:fixed;inset:0;background:#000c;display:grid;place-items:start center;overflow:auto;padding:4vh 12px;z-index:20}
+.detail{background:#181818;width:min(920px,100%);border-radius:6px;overflow:hidden;position:relative;padding-bottom:20px;box-shadow:0 12px 48px rgba(0,0,0,.8)}
 .detail video,.novid,.detail iframe{width:100%;aspect-ratio:16/9;background:#000;display:block}
-.novid{display:grid;place-items:center;color:var(--mute);padding:16px;text-align:center}
-.close{position:absolute;top:8px;right:8px;z-index:2;background:#000b;border:0;border-radius:50%;width:34px;height:34px;color:#fff;cursor:pointer;font-size:0}
+.novid{display:grid;place-items:center;color:var(--ink2);padding:16px;text-align:center}
+.close{position:absolute;top:12px;right:12px;z-index:2;background:#181818;border:0;border-radius:50%;width:36px;height:36px;color:#fff;cursor:pointer;font-size:0}
 .close::before{content:"\2715";font-size:16px}
-.bar{display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px 0}
-.sel{display:grid;gap:2px;font-size:.72rem;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
-.sel select{font-size:.95rem;text-transform:none;letter-spacing:0;color:#fff;min-width:120px}
-.alts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 16px 0;align-items:center}
-.alts b{font-size:.9rem}
-.detail h3{font:800 1.4rem system-ui;margin:14px 16px 2px}.detail small{color:var(--mute);font:400 1rem system-ui}
-.detail p{color:var(--mute);max-width:70ch;margin:4px 16px 0}
-.primary,.more{border:0;border-radius:4px;background:var(--red);color:#fff;font-weight:700;padding:10px 22px;cursor:pointer}
-.more{display:block;margin:24px auto 0;background:#2a2a2a}
-.diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--mute);margin:6px 16px 0;padding:8px;border-radius:6px;background:#000}
-@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none!important}}
+.bar{display:flex;gap:10px;flex-wrap:wrap;padding:16px 20px 0}
+.sel{display:grid;gap:2px;font:500 12px Arial,sans-serif;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.sel select{font-size:14px;text-transform:none;letter-spacing:0;color:#fff;min-width:120px}
+.alts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 20px 0;align-items:center}
+.alts b{font-size:14px}
+.alts button{background:var(--elev);border:0;border-radius:4px;padding:8px 16px;cursor:pointer;min-height:36px}
+.alts .on{background:#fff;color:#141414}
+.detail h3{font:700 24px/1.2 Arial,sans-serif;margin:16px 20px 4px}.detail small{color:var(--ink2);font:400 16px Arial}
+.detail p{color:var(--ink2);max-width:70ch;margin:4px 20px 0}
+.more{display:block;margin:24px auto 0;background:var(--elev);border:0;border-radius:4px;padding:12px 24px;cursor:pointer;font-weight:700}
+.diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--ink2);margin:8px 20px 0;padding:8px;border-radius:4px;background:#000}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <h1>Reel Room</h1>
-  <input id="search" type="search" placeholder="Search movies &amp; series" aria-label="Search" hidden>
+<header id="top">
+  <div class="l"><h1>Reel Room</h1>
+    <nav id="menu"><button data-v="all" class="on">Home</button><button data-v="movie">Movies</button><button data-v="series">Series</button></nav></div>
+  <input id="search" type="search" placeholder="Titles, people, genres" aria-label="Search" hidden>
 </header>
+<section id="hero" hidden></section>
 <main>
-  <nav id="nav"></nav>
+  <nav id="nav" hidden></nav>
   <p id="note" class="note"></p>
-  <div class="grid" id="grid"></div>
+  <div id="home"></div>
+  <div class="grid" id="grid" hidden></div>
   <button class="more" id="more" hidden>Load more</button>
 </main>
 <section class="empty" id="empty" hidden>
@@ -479,7 +502,7 @@ async function loadProvider(rec) {
     // Nuvio-style provider: getStreams(tmdbId, mediaType, season, episode). Browse/search comes from Cinemeta (no API key).
     const CIN = "https://v3-cinemeta.strem.io", metaCache = new Map();
     const cj = async (ctx, path) => { const r = await ctx.fetch(CIN + path); if (!r.ok) throw new Error(`Catalog ${r.status}`); return r.json(); };
-    const toPost = (m) => ({ title: m.name, link: `${m.type}:${m.id}`, image: m.poster || "" });
+    const toPost = (m) => ({ title: m.name, link: `${m.type}:${m.id}`, image: m.poster || "", backdrop: m.background || "", desc: m.description || "", year: (m.releaseInfo || "").toString().slice(0, 4) });
     raw.getCatalog = async () => [
       { title: "Popular Movies", filter: "movie/top" }, { title: "Popular Series", filter: "series/top" },
       { title: "Top Rated Movies", filter: "movie/imdbRating" }, { title: "Top Rated Series", filter: "series/imdbRating" },
@@ -503,7 +526,7 @@ async function loadProvider(rec) {
     raw.getMeta = async ({ link }, ctx) => {
       const m = await getCin(ctx, link), type = link.split(":")[0];
       const tmdb = m.moviedb_id;
-      const out = { title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
+      const out = { background: m.background || "", title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
       if (!tmdb) throw new Error("This title has no TMDB id, so this provider cannot play it.");
       if (type === "movie") out.linkList = [{ title: "Play", directLinks: [{ title: "Play", link: String(tmdb), type: "movie" }] }];
       else {
@@ -673,14 +696,33 @@ function setNote(text, isErr) {
 
 function renderShell() {
   const none = S.providers.length === 0;
-  $("#empty").hidden = !none; $("main").hidden = none; $("#search").hidden = none;
+  $("#empty").hidden = !none; $("main").hidden = none; $("#search").hidden = none; if (none) $("#hero").hidden = true;
 }
 
 function renderNav() {
   const nav = $("#nav");
-  nav.hidden = !!S.query;
+  nav.hidden = true;
   nav.replaceChildren(...S.catalog.map((c) =>
     el("button", { class: c.filter === S.filter ? "on" : "", onclick: () => { S.filter = c.filter; renderNav(); fetchPosts(true); } }, c.title)));
+}
+
+const cardOf = (post) => el("button", { class: "card", onclick: () => openDetail(post) },
+  el("img", { src: post.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, post.title));
+async function renderHome(p) {
+  const token = ++S.token, box = $("#home");
+  box.replaceChildren(); setNote("Loading…");
+  const rows = await Promise.all(S.catalog.map(async (c) => ({ c, items: await withTimeout(p.getPosts({ filter: c.filter, page: 1 })).catch(() => []) })));
+  if (token !== S.token) return;
+  setNote("");
+  const all = rows.flatMap((r) => r.items);
+  if (!all.length) return setNote("No titles found.", true);
+  const pool = all.filter((x) => x.backdrop), top = pool[Math.floor(Math.random() * Math.min(pool.length, 8))] || all[0];
+  const bg = top.backdrop || top.image;
+  box.append(el("section", { class: "hero", style: `background-image:linear-gradient(to top,#141414 4%,#14141400 55%),linear-gradient(to right,#000a,#0000 70%),url("${bg}")` },
+    el("div", {}, el("h2", {}, top.title), top.desc && el("p", {}, top.desc),
+      el("button", { class: "primary", onclick: () => openDetail(top) }, "\u25B6 Play"),
+      el("button", { class: "primary ghost", onclick: () => openDetail(top) }, "More info"))));
+  for (const r of rows) if (r.items.length) box.append(el("section", { class: "row" }, el("h2", {}, r.c.title), el("div", { class: "strip" }, r.items.map(cardOf))));
 }
 
 function renderGrid(append) {
@@ -697,6 +739,10 @@ function renderGrid(append) {
 async function fetchPosts(reset) {
   const p = cur();
   if (!p) return;
+  const home = !S.query && S.catalog.length > 0 && reset;
+  $("#home").hidden = !home && !!S.query; $("#grid").hidden = home; $("#more").hidden = true;
+  if (home) return renderHome(p);
+  $("#home").hidden = true; $("#grid").hidden = false;
   const token = ++S.token;
   if (reset) { S.page = 1; S.posts = []; renderGrid(false); } else S.page++;
   setNote("Loading…");
@@ -1005,8 +1051,51 @@ function openManager() {
 
 /* ===================== boot ===================== */
 $("#more").addEventListener("click", () => fetchPosts(false));
-$("#search").addEventListener("keydown", (e) => { if (e.key === "Enter") { S.query = e.target.value.trim(); renderNav(); fetchPosts(true); } });
-$("#search").addEventListener("input", (e) => { if (!e.target.value && S.query) { S.query = ""; renderNav(); fetchPosts(true); } });
+const rowsData = []; let view = "all";
+const card = (p) => el("button", { class: "card", onclick: () => openDetail(p) },
+  el("img", { src: p.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, p.title));
+const applyView = () => rowsData.forEach(({ row }) => { row.hidden = view !== "all" && row.dataset.k !== view; });
+async function renderHome() {
+  const p = cur();
+  if (!p) return renderShell();
+  $("#home").replaceChildren(); rowsData.length = 0; setNote("Loading…");
+  const cats = (await withTimeout(p.getCatalog()).catch(() => [])) || [];
+  const res = await Promise.allSettled(cats.map((c) => withTimeout(p.getPosts({ filter: c.filter, page: 1 }))));
+  cats.forEach((c, i) => {
+    const items = res[i].status === "fulfilled" ? res[i].value : [];
+    if (!items.length) return;
+    const row = el("section", { class: "rowsec", "data-k": String(c.filter).split("/")[0] }, el("h2", {}, c.title), el("div", { class: "row" }, items.map(card)));
+    rowsData.push({ row, items }); $("#home").append(row);
+  });
+  setNote(rowsData.length ? "" : "No titles found.");
+  applyView(); heroFrom(rowsData[0]?.items);
+}
+async function heroFrom(items) {
+  const h = $("#hero");
+  if (!items?.length) { h.hidden = true; return; }
+  const pick = items.find((x) => x.image) || items[0]; let m = {};
+  try { m = await withTimeout(cur().getMeta({ link: pick.link }), 15000); } catch { /* poster fallback */ }
+  const img = (m.background || m.image || pick.image || "").replace(/"/g, "%22");
+  h.hidden = false;
+  h.style.backgroundImage = `linear-gradient(to top,#141414,transparent 55%),linear-gradient(to right,rgba(0,0,0,.65),transparent 60%),url("${img}")`;
+  const open = () => openDetail(pick);
+  h.replaceChildren(el("div", { class: "hc" }, el("h2", {}, m.title || pick.title), el("p", {}, m.synopsis || ""),
+    el("div", { class: "hb" }, el("button", { class: "play", onclick: open }, "\u25B6 Play"), el("button", { class: "info", onclick: open }, "\u24D8 More Info"))));
+}
+function doSearch(q) {
+  S.query = q;
+  $("#home").hidden = !!q; $("#hero").style.display = q ? "none" : ""; $("#grid").hidden = !q;
+  if (q) fetchPosts(true); else { S.posts = []; renderGrid(false); $("#more").hidden = true; setNote(""); }
+}
+$("#search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(e.target.value.trim()); });
+$("#search").addEventListener("input", (e) => { if (!e.target.value && S.query) doSearch(""); });
+$("#menu").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  view = b.dataset.v; $("#search").value = ""; if (S.query) doSearch("");
+  [...$("#menu").children].forEach((x) => x.classList.toggle("on", x === b)); applyView();
+  $("#hero").style.display = view === "all" && !S.query ? "" : "none"; scrollTo(0, 0);
+});
+addEventListener("scroll", () => $("#top").classList.toggle("solid", scrollY > 20), { passive: true });
 
 // Providers ship with the site: every file in /providers is loaded automatically.
 async function loadRepoProviders() {
@@ -1027,7 +1116,7 @@ async function loadRepoProviders() {
   setNote("Loading…");
   await loadRepoProviders();
   setNote("");
-  await selectProvider(AUTO);
+  S.pid = AUTO; renderShell(); await renderHome();
 })();
 </script>
 </body>

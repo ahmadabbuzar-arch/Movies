@@ -161,8 +161,18 @@ const getProxy = () => (store.get("proxyUrl") || "/api/proxy").trim();
 const proxyUrl = (url, headers = {}) => `${getProxy()}?u=${enc(url)}&h=${enc(JSON.stringify(headers))}`;
 const FORBIDDEN = /^(referer|user-agent|origin|cookie|host|accept-encoding|sec-.*)$/i;
 
+const PLOG = [];
+const plog = (t) => { PLOG.push(String(t).slice(0, 220)); if (PLOG.length > 25) PLOG.shift(); };
+const hostOf = (u) => { try { return new URL(u).host + new URL(u).pathname.slice(0, 40); } catch { return String(u).slice(0, 60); } };
+const provConsole = Object.fromEntries(["log", "info", "warn", "error", "debug"].map((k) => [k, (...a) => { plog(`console.${k}: ` + a.map((x) => { try { return typeof x === "string" ? x : x instanceof Error ? x.message : JSON.stringify(x); } catch { return String(x); } }).join(" ")); }]));
+
 // Direct first (cheap); falls back to the proxy when CORS blocks it or forbidden headers are needed.
 async function pfetch(input, init = {}) {
+  const t0 = typeof input === "string" ? input : input.url;
+  try { const r = await pfetchInner(input, init); plog(`${(init.method || "GET").toUpperCase()} ${hostOf(t0)} -> ${r.status}`); return r; }
+  catch (e) { plog(`${(init.method || "GET").toUpperCase()} ${hostOf(t0)} FAILED: ${e.message}`); throw e; }
+}
+async function pfetchInner(input, init = {}) {
   const url = typeof input === "string" ? input : input.url;
   const headers = init.headers instanceof Headers ? Object.fromEntries(init.headers) : { ...(init.headers || {}) };
   const method = (init.method || "GET").toUpperCase();
@@ -444,8 +454,8 @@ async function loadProvider(rec) {
       if (!hit) throw new Error(`Cannot find "${name}" (from ${path})`);
       return hit.endsWith(".json") ? JSON.parse(files[hit]) : runModule(hit);
     };
-    new Function("exports", "require", "module", "__filename", "__dirname", "process", "fetch", "Buffer", "global", code + `\n//# sourceURL=provider/${path}`)(
-      module.exports, req, module, path, dir, { env: {}, platform: "browser", version: "v18.0.0", cwd: () => "/", nextTick: (f, ...a) => setTimeout(() => f(...a)) }, pfetch, window.Buffer || BufferShim, window);
+    new Function("exports", "require", "module", "__filename", "__dirname", "process", "fetch", "Buffer", "global", "console", code + `\n//# sourceURL=provider/${path}`)(
+      module.exports, req, module, path, dir, { env: {}, platform: "browser", version: "v18.0.0", cwd: () => "/", nextTick: (f, ...a) => setTimeout(() => f(...a)) }, pfetch, window.Buffer || BufferShim, window, provConsole);
     return module.exports;
   }
   const load = (path) => {
@@ -786,14 +796,14 @@ function openDetail(post) {
   host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
 
   const play = (link, type) => {
-    streams = null; err = ""; errDetail = ""; idx = 0; idle = false; draw();
+    streams = null; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
     videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
     withTimeout(p.getStream({ link, type })).then((s) => {
       if (gone) return;
       streams = Array.isArray(s) ? s.filter((x) => x && x.link) : [];
-      if (!streams.length) err = "No playable stream found.";
+      if (!streams.length) { err = "No playable stream found."; errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
-    }).catch((e) => { if (!gone) { err = e.message; draw(); } });
+    }).catch((e) => { if (!gone) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
   };
   const showEpisodes = (g) => {
     err = ""; sel = g; eps = { title: g.title, list: null }; drawBody();
@@ -815,7 +825,7 @@ function openDetail(post) {
     const s = streams?.[idx];
     const nodes = [];
     if (s && err) nodes.push(el("p", { class: "note err" }, err));
-    if (s && errDetail) nodes.push(el("pre", { class: "diag" }, errDetail));
+    if (errDetail) nodes.push(el("pre", { class: "diag" }, errDetail));
     if (streams?.length > 1)
       nodes.push(el("div", { class: "alts" }, streams.map((x, n) =>
         el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; errDetail = ""; idx = n; draw(); } }, x.server || x.quality || `Source ${n + 1}`))));

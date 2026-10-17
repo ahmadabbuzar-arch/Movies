@@ -66,7 +66,9 @@ main{position:relative;padding:76px 0 48px}
 .detail p{color:var(--ink2);max-width:70ch;margin:4px 20px 0}
 .more{display:block;margin:24px auto 0;background:var(--elev);border:0;border-radius:4px;padding:12px 24px;cursor:pointer;font-weight:700}
 .diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--ink2);margin:8px 20px 0;padding:8px;border-radius:4px;background:#000}
-.detail{overflow:clip}
+.overlay{grid-template-columns:minmax(0,1fr);overflow-x:hidden}
+.detail{overflow:clip;min-width:0;max-width:100%}
+html,body{overflow-x:hidden;max-width:100%}
 .pl{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation;outline:0}
 .detail .pl video{width:100%;height:100%;aspect-ratio:auto;object-fit:contain;display:block}
 .pl:fullscreen{aspect-ratio:auto;width:100vw;height:100vh}.pl:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh}
@@ -97,7 +99,7 @@ main{position:relative;padding:76px 0 48px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .flash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#000a;padding:8px 16px;border-radius:20px;font:700 14px Arial,sans-serif;opacity:0;pointer-events:none;transition:opacity .2s}.flash.on{opacity:1}
 .moresec{margin:22px 20px 0}.moresec h4{font:700 18px Arial,sans-serif;margin:0 0 10px}
-.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}@media(min-width:700px){.mgrid{grid-template-columns:repeat(4,1fr)}}
+.mgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}@media(min-width:700px){.mgrid{grid-template-columns:repeat(4,minmax(0,1fr))}}.mgrid .card{min-width:0}.mgrid img{max-width:100%}
 #sent{height:1px}
 .menu{position:absolute;right:12px;bottom:64px;width:min(240px,calc(100% - 24px));max-height:calc(100% - 90px);overflow:auto;background:#181818f2;border-radius:8px;padding:6px 0;box-shadow:0 8px 30px #000a;z-index:6;backdrop-filter:blur(8px)}
 .mh{font:700 11px Arial,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding:10px 16px 4px}
@@ -110,11 +112,74 @@ main{position:relative;padding:76px 0 48px}
  .overlay{padding:0;place-items:stretch}.detail{width:100%;border-radius:0;min-height:100%}
  .vbox{position:sticky;top:0;z-index:5;background:#000}
  .close{position:fixed;top:max(10px,env(safe-area-inset-top));right:10px;z-index:30}
- .bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.sel select{width:100%;min-width:0}
+ .bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.sel select{width:100%;min-width:0}
  .vol{display:none}.pb.big{width:56px;height:56px}
 }
 @media(prefers-reduced-motion:reduce){.spin::after{animation:none}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none!important}}
+
+/* ===== premium layer ===== */
+:root{--ease:cubic-bezier(.2,.8,.2,1)}
+html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+::selection{background:var(--red);color:#fff}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:8px}::-webkit-scrollbar-track{background:transparent}
+body{background:radial-gradient(1200px 600px at 85% -10%,#2a0a0d66,transparent 60%),#141414}
+#top{backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);background:linear-gradient(#000c,#0000)}
+#top.solid{background:rgba(20,20,20,.9);box-shadow:0 1px 0 #ffffff14}
+h1{letter-spacing:.08em;text-shadow:0 0 26px #e5091477}
+#menu button{position:relative;transition:color .2s}
+#menu .on::after{content:"";position:absolute;left:0;right:0;bottom:3px;height:2px;border-radius:2px;background:var(--red)}
+#search{border-radius:999px;background:#ffffff14;border-color:#ffffff26;padding:8px 16px;transition:width .3s var(--ease),background .2s}
+#search:focus{width:min(320px,56vw);background:#000a;border-color:#fff}
+#hero{animation:fade .8s var(--ease) both}
+#hero::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 15% 100%,#141414cc,transparent 70%);pointer-events:none}
+.hc{position:relative;z-index:1}
+.hc h2{font-size:clamp(34px,6vw,64px);letter-spacing:-.02em;font-weight:800}
+.hm{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.chip{font:600 12px Arial,sans-serif;letter-spacing:.04em;padding:4px 10px;border-radius:999px;background:#ffffff22;backdrop-filter:blur(6px)}
+.chip.star{color:#f5c518}
+.play,.info{border-radius:6px;transition:transform .15s var(--ease),background .2s,box-shadow .2s}
+.play{box-shadow:0 8px 24px #0008}.play:hover{transform:translateY(-1px)}
+.play:active,.info:active,.card:active{transform:scale(.97)}
+.rowsec{animation:up .6s var(--ease) both}
+.rowsec h2{display:flex;align-items:center;gap:10px}
+.rowsec h2::before{content:"";width:4px;height:1em;border-radius:2px;background:var(--red)}
+.row{-webkit-mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent);mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.ph{position:relative;border-radius:8px;overflow:hidden;background:#1f1f1f;box-shadow:0 4px 14px #0007;transition:box-shadow .25s}
+.card img{border-radius:0}
+.ph::after{content:"\25B6";position:absolute;inset:0;display:grid;place-items:center;font-size:24px;color:#fff;background:linear-gradient(transparent 40%,#000b);opacity:0;transition:opacity .25s;pointer-events:none}
+.card:hover .ph::after,.card:focus-visible .ph::after{opacity:1}
+.card:hover .ph{box-shadow:0 12px 30px #000c,0 0 0 2px #ffffff40}
+.rt{position:absolute;top:6px;left:6px;z-index:1;font:700 11px Arial,sans-serif;padding:3px 7px;border-radius:999px;background:#000a;backdrop-filter:blur(6px);color:#f5c518}
+.moresec .card img,.mgrid img{border-radius:8px}
+.skel{padding:80px 4vw 0}.skrow{display:flex;gap:8px;margin-bottom:24px;overflow:hidden}
+.skrow i{flex:0 0 clamp(120px,44vw,200px);aspect-ratio:2/3;border-radius:8px;background:linear-gradient(100deg,#1f1f1f 40%,#2b2b2b 50%,#1f1f1f 60%) 0 0/200% 100%;animation:shine 1.2s linear infinite}
+@keyframes shine{to{background-position:-200% 0}}
+@keyframes fade{from{opacity:0}}
+@keyframes up{from{opacity:0;transform:translateY(14px)}}
+@keyframes pop{from{opacity:0;transform:translateY(24px) scale(.97)}}
+.overlay{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:fade .25s both}
+.detail{border-radius:14px;animation:pop .35s var(--ease) both;box-shadow:0 30px 80px #000d,0 0 0 1px #ffffff14}
+.detail h3{font-size:clamp(22px,4vw,30px);letter-spacing:-.01em}
+.close{background:#181818cc;backdrop-filter:blur(8px);transition:transform .2s,background .2s}
+@media(hover:hover){.close:hover{transform:scale(1.08);background:#333}}
+.pb.big{backdrop-filter:blur(8px);background:#0009;border:1px solid #ffffff33}
+.pos{box-shadow:0 0 10px #e5091488}
+.menu{backdrop-filter:blur(14px);border:1px solid #ffffff14}
+.mi{border-radius:6px;margin:0 6px;width:calc(100% - 12px)}
+.more{border-radius:6px;transition:background .2s}
+@media(max-width:700px){.detail{border-radius:0;animation:fade .25s both}.hc h2{font-size:32px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+
+/* ===== premium detail background ===== */
+.detail{background:linear-gradient(180deg,#0c0c0f,#050506 70%);isolation:isolate}
+.detail::before{content:"";position:absolute;inset:0 0 auto 0;height:900px;z-index:-1;background:var(--bgi) center top/cover no-repeat;filter:blur(50px) saturate(1.5);transform:scale(1.3);opacity:.3;pointer-events:none;-webkit-mask-image:linear-gradient(#000 35%,transparent);mask-image:linear-gradient(#000 35%,transparent)}
+.detail::after{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(800px 380px at 50% 0,#e5091424,transparent 70%);pointer-events:none}
+.detail p{color:#d0d0d0}
+.alts button{background:#ffffff14;border:1px solid #ffffff1f;backdrop-filter:blur(6px)}
+.moresec h4{display:flex;align-items:center;gap:10px}
+.moresec h4::before{content:"";width:4px;height:1em;border-radius:2px;background:var(--red)}
+.mgrid .card span{color:#bdbdbd}.msent{height:1px}
 </style>
 </head>
 <body>
@@ -569,7 +634,7 @@ async function loadProvider(rec) {
     // Nuvio-style provider: getStreams(tmdbId, mediaType, season, episode). Browse/search comes from Cinemeta (no API key).
     const CIN = "https://v3-cinemeta.strem.io", metaCache = new Map();
     const cj = async (ctx, path) => { const r = await ctx.fetch(CIN + path); if (!r.ok) throw new Error(`Catalog ${r.status}`); return r.json(); };
-    const toPost = (m) => ({ title: m.name, link: `${m.type}:${m.id}`, image: m.poster || "", backdrop: m.background || "", desc: m.description || "", year: (m.releaseInfo || "").toString().slice(0, 4) });
+    const toPost = (m) => ({ title: m.name, link: `${m.type}:${m.id}`, image: m.poster || "", rating: m.imdbRating || "", backdrop: m.background || "", desc: m.description || "", year: (m.releaseInfo || "").toString().slice(0, 4) });
     raw.getCatalog = async () => [
       { title: "Popular Movies", filter: "movie/top" }, { title: "Popular Series", filter: "series/top" },
       { title: "Top Rated Movies", filter: "movie/imdbRating" }, { title: "Top Rated Series", filter: "series/imdbRating" },
@@ -617,9 +682,10 @@ async function loadProvider(rec) {
       const looksEmbed = (u) => { try { const x = new URL(u); return /vidmoly|filemoon|streamhide|voe\.|dood|streamtape|mixdrop|vidhide|vtube|streamwish|filelions|lulustream|upstream|vidoza|embed|\/e\/|\/v\/|\/player|iframe|\/play\b/i.test(x.host + x.pathname); } catch { return false; } };
       return (Array.isArray(rr) ? rr : []).filter((x) => x && /^https?:\/\//i.test(x.url || "") && (guessType(x.url) || looksEmbed(x.url))).map((x) => ({ ...x, type: guessType(x.url) || "embed" }));
     };
-    raw.getMore = async ({ link }, ctx) => { // same-genre titles from Cinemeta
-      const [type, id] = link.split(":"), m = await getCin(ctx, link), g = (m.genres || [])[0];
-      const r = await cj(ctx, `/catalog/${type}/top${g ? `/genre=${encodeURIComponent(g)}` : ""}.json`);
+    raw.getMore = async ({ link, page }, ctx) => { // page n -> next genre / next 100 titles
+      const [type, id] = link.split(":"), m = await getCin(ctx, link), gs = m.genres || [], n = (page || 1) - 1;
+      const g = gs.length ? gs[n % gs.length] : "", skip = Math.floor(n / Math.max(gs.length, 1)) * 100;
+      const r = await cj(ctx, `/catalog/${type}/top${g ? `/genre=${encodeURIComponent(g)}` : ""}${skip ? `/skip=${skip}` : ""}.json`);
       return (r.metas || []).filter((x) => x.id !== id).map(toPost);
     };
     raw.__getStreams = raw.getStreams;
@@ -1097,7 +1163,8 @@ function openDetail(post) {
   let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false;
 
   let more = null; // must exist before the first draw()
-  const close = () => { gone = true; stopPlayer?.(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
+  let mobs = null, morePage = 1, moreBusy = false, moreDone = false;
+  const close = () => { gone = true; stopPlayer?.(); mobs?.disconnect(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
   window.addEventListener("keydown", esc);
 
@@ -1105,6 +1172,7 @@ function openDetail(post) {
   const body = el("div");
   const article = el("article", { class: "detail", onclick: (e) => e.stopPropagation() },
     el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), videoBox, body);
+  article.style.setProperty("--bgi", `url("${String(post.image || "").replace(/"/g, "%22")}")`);
   host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
 
   const play = (link, type) => {
@@ -1163,13 +1231,29 @@ function openDetail(post) {
     nodes.push(el("h3", {}, meta?.title || post.title, meta?.year && el("small", {}, ` ${meta.year}`)));
     nodes.push(el("p", {}, meta?.synopsis || (meta ? "No synopsis available." : "")));
     if (more?.length) nodes.push(el("section", { class: "moresec" }, el("h4", {}, "More Like This"),
-      el("div", { class: "mgrid" }, more.slice(0, 18).map((x) => el("button", { class: "card", onclick: () => { close(); openDetail(x); } },
-        el("img", { src: x.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, x.title))))));
+      el("div", { class: "mgrid" }, more.map((x) => el("button", { class: "card", onclick: () => { close(); openDetail(x); } },
+        el("img", { src: x.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, x.title)))), el("div", { class: "msent" })));
     body.replaceChildren(...nodes);
+    mobs?.disconnect();
+    const sn = body.querySelector(".msent");
+    if (sn && !moreDone) { mobs = new IntersectionObserver((e) => { if (e[0].isIntersecting) loadMore(); }, { rootMargin: "600px" }); mobs.observe(sn); }
   }
 
   draw();
-  withTimeout(Promise.resolve(p.getMore ? p.getMore({ link: post.link }) : []), 20000).then((l) => { if (!gone) { more = l || []; drawBody(); } }).catch(() => {});
+  const loadMore = async () => {
+    if (moreBusy || moreDone || gone || !p.getMore) return;
+    moreBusy = true;
+    try {
+      const l = await withTimeout(Promise.resolve(p.getMore({ link: post.link, page: morePage })), 20000);
+      if (gone) return;
+      morePage++; if (!l?.length || morePage > 12) moreDone = true;
+      const have = new Set((more || []).map((x) => x.link)), fresh = (l || []).filter((x) => !have.has(x.link) && x.link !== post.link);
+      more = (more || []).concat(fresh); drawBody();
+      moreBusy = false; if (fresh.length < 6 && !moreDone) loadMore();
+    } catch { moreDone = true; }
+    moreBusy = false;
+  };
+  loadMore();
   withTimeout(p.getMeta({ link: post.link })).then((m) => {
     if (gone) return;
     meta = m || {};
@@ -1277,14 +1361,16 @@ function openManager() {
 $("#more").addEventListener("click", () => fetchPosts(false));
 const rowsData = []; let view = "all";
 const card = (p) => el("button", { class: "card", onclick: () => openDetail(p) },
-  el("img", { src: p.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, p.title));
+  el("div", { class: "ph" }, el("img", { src: p.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), p.rating ? el("b", { class: "rt" }, "\u2605 " + p.rating) : null),
+  el("span", {}, p.title));
 const applyView = () => rowsData.forEach(({ row }) => { row.hidden = view !== "all" && row.dataset.k !== view; });
 async function renderHome() {
   const p = cur();
   if (!p) return renderShell();
-  $("#home").replaceChildren(); rowsData.length = 0; setNote("Loading…");
+  $("#home").replaceChildren(el("div", { class: "skel" }, ...[0, 1].map(() => el("div", { class: "skrow" }, ...Array.from({ length: 8 }, () => el("i")))))); rowsData.length = 0; setNote("");
   const cats = (await withTimeout(p.getCatalog()).catch(() => [])) || [];
   const res = await Promise.allSettled(cats.map((c) => withTimeout(p.getPosts({ filter: c.filter, page: 1 }))));
+  $("#home").replaceChildren();
   cats.forEach((c, i) => {
     const items = res[i].status === "fulfilled" ? res[i].value : [];
     if (!items.length) return;
@@ -1328,7 +1414,8 @@ async function heroFrom(items) {
   h.hidden = false;
   h.style.backgroundImage = `linear-gradient(to top,#141414,transparent 55%),linear-gradient(to right,rgba(0,0,0,.65),transparent 60%),url("${img}")`;
   const open = () => openDetail(pick);
-  h.replaceChildren(el("div", { class: "hc" }, el("h2", {}, m.title || pick.title), el("p", {}, m.synopsis || ""),
+  h.replaceChildren(el("div", { class: "hc" }, el("div", { class: "hm" }, m.year || pick.year ? el("span", { class: "chip" }, m.year || pick.year) : null, el("span", { class: "chip" }, m.type === "series" ? "Series" : "Movie"), pick.rating ? el("span", { class: "chip star" }, "\u2605 " + pick.rating) : null),
+    el("h2", {}, m.title || pick.title), el("p", {}, m.synopsis || ""),
     el("div", { class: "hb" }, el("button", { class: "play", onclick: open }, "\u25B6 Play"), el("button", { class: "info", onclick: open }, "\u24D8 More Info"))));
 }
 function doSearch(q) {

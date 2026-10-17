@@ -50,6 +50,7 @@ button.addp,.primary,.plist button,.more{border:1px solid var(--line);border-rad
 .plist .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .plist small{color:var(--mute)}
 .more{display:block;margin:20px auto 0}
+.diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--mute);margin:6px 0 0;padding:8px;border-radius:6px;background:#0f1c20}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style>
 </head>
@@ -548,26 +549,48 @@ function mountPlayer(box, s, poster, onError) {
   const isHls = s.type === "m3u8" || /\.m3u8(\?|$)/i.test(s.link);
   // try the direct URL first (free); fall back to the proxy if it fails or headers are required
   const urls = hdrs ? [proxyUrl(s.link, hdrs)] : [s.link, proxyUrl(s.link, {})];
+  const host = (() => { try { return new URL(s.link).host; } catch { return s.link; } })();
+  const log = [];
   let attempt = 0, hls = null, dead = false;
-  const start = () => {
+
+  // last resort: ask the proxy what the server really answers, so the error says why
+  const finish = async (msg) => {
+    let probe;
+    try {
+      const r = await fetch(urls[urls.length - 1], { headers: { Range: "bytes=0-199" } });
+      const ct = (r.headers.get("content-type") || "").split(";")[0];
+      const txt = /text|json|mpegurl|xml/i.test(ct) ? (await r.text()).slice(0, 160).replace(/\s+/g, " ") : "(binary)";
+      probe = `proxy -> HTTP ${r.status} ${ct} ${txt}`;
+    } catch (e) { probe = "proxy request failed: " + e.message; }
+    if (!dead) onError(msg, [`type=${s.type || "?"} host=${host}`, ...log, probe].join("\n"));
+  };
+  const fail = (msg) => { if (attempt < urls.length - 1) { attempt++; start(); } else finish(msg); };
+  const native = (src) => {
+    v.onerror = () => { log.push(`video error code ${v.error?.code} ${v.error?.message || ""} (try ${attempt + 1})`); fail("This video could not be played."); };
+    v.src = src;
+  };
+
+  function start() {
     if (dead) return;
     const src = urls[attempt];
     hls?.destroy(); hls = null;
-    const fail = (msg) => { if (attempt < urls.length - 1) { attempt++; start(); } else onError(msg); };
-    if (isHls && !v.canPlayType("application/vnd.apple.mpegurl")) {
-      loadHls().then((H) => {
-        if (dead) return;
-        if (!H?.isSupported()) return onError("This browser cannot play HLS streams.");
+    if (!isHls) return native(src);
+    const canNative = !!v.canPlayType("application/vnd.apple.mpegurl");
+    loadHls().then((H) => {
+      if (dead) return;
+      if (H?.isSupported()) {
         hls = new H();
         hls.loadSource(src);
         hls.attachMedia(v);
-        hls.on(H.Events.ERROR, (_e, d) => d.fatal && fail("Stream failed to load."));
-      }).catch((e) => onError(e.message));
-    } else {
-      v.onerror = () => fail("This video could not be played.");
-      v.src = src;
-    }
-  };
+        hls.on(H.Events.ERROR, (_e, d) => {
+          if (!d.fatal) return;
+          log.push(`hls ${d.type}/${d.details} http=${d.response?.code ?? "-"} (try ${attempt + 1})`);
+          fail("Stream failed to load.");
+        });
+      } else if (canNative) native(src);
+      else onError("This browser cannot play HLS streams.");
+    }).catch((e) => { log.push("hls.js: " + e.message); if (canNative) native(src); else onError(e.message); });
+  }
   start();
   return () => { dead = true; hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
 }
@@ -576,7 +599,7 @@ function mountPlayer(box, s, poster, onError) {
 function openDetail(post) {
   const p = cur();
   const host = $("#detail");
-  let meta = null, streams = null, err = "", idx = 0, eps = null, stopPlayer = null, gone = false;
+  let meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false;
 
   const close = () => { gone = true; stopPlayer?.(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
@@ -589,7 +612,8 @@ function openDetail(post) {
   host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
 
   const play = (link, type) => {
-    streams = null; err = ""; idx = 0; draw();
+    streams = null; err = ""; errDetail = ""; idx = 0; idle = false; draw();
+    videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
     withTimeout(p.getStream({ link, type })).then((s) => {
       if (gone) return;
       streams = Array.isArray(s) ? s.filter((x) => x && x.link) : [];
@@ -598,36 +622,40 @@ function openDetail(post) {
     }).catch((e) => { if (!gone) { err = e.message; draw(); } });
   };
   const showEpisodes = (g) => {
-    err = "";
-    withTimeout(p.getEpisodes({ link: g.episodesLink })).then((list) => { eps = { title: g.title, list: list || [] }; draw(); })
-      .catch((e) => { err = e.message; draw(); });
+    err = ""; sel = g; eps = { title: g.title, list: null }; drawBody();
+    withTimeout(p.getEpisodes({ link: g.episodesLink })).then((list) => {
+      if (gone || sel !== g) return;
+      eps = { title: g.title, list: list || [] }; drawBody();
+    }).catch((e) => { if (gone) return; eps = null; err = e.message; draw(); });
   };
 
   function draw() {
     if (gone) return;
     const s = streams?.[idx];
     stopPlayer?.(); stopPlayer = null;
-    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m) => { err = m; drawBody(); });
-    else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : "Loading video…")));
+    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => { err = m; errDetail = d || ""; drawBody(); });
+    else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }
   function drawBody() {
     const s = streams?.[idx];
     const nodes = [];
     if (s && err) nodes.push(el("p", { class: "note err" }, err));
+    if (s && errDetail) nodes.push(el("pre", { class: "diag" }, errDetail));
     if (streams?.length > 1)
       nodes.push(el("div", { class: "alts" }, streams.map((x, n) =>
-        el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; idx = n; draw(); } }, x.server || x.quality || `Source ${n + 1}`))));
+        el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; errDetail = ""; idx = n; draw(); } }, x.server || x.quality || `Source ${n + 1}`))));
     if (meta?.linkList?.length) {
+      if (eps) nodes.push(el("div", { class: "alts" }, el("b", {}, eps.title || "Episodes"),
+        eps.list === null && el("span", { class: "note" }, "Loading episodes…"),
+        eps.list && eps.list.length === 0 && el("span", { class: "note" }, "No episodes found."),
+        (eps.list || []).map((e, k) => el("button", { onclick: () => play(e.link, "series") }, e.title || `Episode ${k + 1}`))));
       for (const g of meta.linkList) {
         nodes.push(el("div", { class: "alts" },
           el("b", {}, g.title || g.quality || "Links"),
           (g.directLinks || []).map((d, k) => el("button", { onclick: () => play(d.link, d.type || meta.type) }, d.title || `Play ${k + 1}`)),
-          g.episodesLink && el("button", { onclick: () => showEpisodes(g) }, "Episodes")));
+          g.episodesLink && el("button", { class: sel === g ? "on" : "", onclick: () => showEpisodes(g) }, "Episodes")));
       }
-      if (eps) nodes.push(el("div", { class: "alts" }, el("b", {}, eps.title || "Episodes"),
-        eps.list.length === 0 && el("span", { class: "note" }, "No episodes found."),
-        eps.list.map((e, k) => el("button", { onclick: () => play(e.link, "series") }, e.title || `Episode ${k + 1}`))));
     }
     nodes.push(el("h3", {}, meta?.title || post.title, meta?.year && el("small", {}, ` ${meta.year}`)));
     nodes.push(el("p", {}, meta?.synopsis || (meta ? "No synopsis available." : "")));
@@ -640,7 +668,13 @@ function openDetail(post) {
     meta = m || {};
     if (meta.linkList?.length) {
       const g = meta.linkList.find((x) => x.directLinks?.length);
-      if (g) play(g.directLinks[0].link, g.directLinks[0].type || meta.type); else draw();
+      if (g) play(g.directLinks[0].link, g.directLinks[0].type || meta.type);
+      else {
+        // series: nothing to play yet -> prompt and open the first language's episodes
+        idle = true; draw();
+        const first = meta.linkList.find((x) => x.episodesLink);
+        if (first) showEpisodes(first);
+      }
     } else play(post.link);
   }).catch((e) => { if (gone) return; meta = {}; err = e.message; play(post.link); });
 }

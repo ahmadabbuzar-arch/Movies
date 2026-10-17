@@ -169,7 +169,12 @@ const provConsole = Object.fromEntries(["log", "info", "warn", "error", "debug"]
 // Direct first (cheap); falls back to the proxy when CORS blocks it or forbidden headers are needed.
 async function pfetch(input, init = {}) {
   const t0 = typeof input === "string" ? input : input.url;
-  try { const r = await pfetchInner(input, init); plog(`${(init.method || "GET").toUpperCase()} ${hostOf(t0)} -> ${r.status}`); return r; }
+  try {
+    const r = await pfetchInner(input, init);
+    let why = "";
+    if (r.status >= 400) { try { why = " " + (await r.clone().text()).replace(/\s+/g, " ").slice(0, 120); } catch { /* ignore */ } }
+    plog(`${(init.method || "GET").toUpperCase()} ${hostOf(t0)} -> ${r.status}${why}`); return r;
+  }
   catch (e) { plog(`${(init.method || "GET").toUpperCase()} ${hostOf(t0)} FAILED: ${e.message}`); throw e; }
 }
 async function pfetchInner(input, init = {}) {

@@ -162,7 +162,7 @@ const proxyUrl = (url, headers = {}) => `${getProxy()}?u=${enc(url)}&h=${enc(JSO
 const FORBIDDEN = /^(referer|user-agent|origin|cookie|host|accept-encoding|sec-.*)$/i;
 
 const PLOG = [];
-const plog = (t) => { PLOG.push(String(t).slice(0, 220)); if (PLOG.length > 25) PLOG.shift(); };
+const plog = (t) => { PLOG.push(String(t).slice(0, 220)); if (PLOG.length > 60) PLOG.shift(); };
 const hostOf = (u) => { try { return new URL(u).host + new URL(u).pathname.slice(0, 40); } catch { return String(u).slice(0, 60); } };
 const provConsole = Object.fromEntries(["log", "info", "warn", "error", "debug"].map((k) => [k, (...a) => { plog(`console.${k}: ` + a.map((x) => { try { return typeof x === "string" ? x : x instanceof Error ? x.message : JSON.stringify(x); } catch { return String(x); } }).join(" ")); }]));
 
@@ -533,6 +533,7 @@ async function loadProvider(rec) {
       return raw.__getStreams(tmdb, season != null ? "tv" : "movie", season != null ? +season : undefined, episode != null ? +episode : undefined);
     };
     raw.__getStreams = raw.getStreams;
+    raw.__tmdb = true;
   }
   if (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts === "function") raw.getPosts = (a, c) => raw.getSearchPosts({ ...a, query: a.filter || "a", searchQuery: a.filter || "a" }, c);
   if (typeof raw.getStream !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function"))
@@ -554,7 +555,7 @@ async function loadProvider(rec) {
   const call = (fn, args) => fn.call(raw, { providerValue: id, provider: id, signal: new AbortController().signal, providerContext: ctx, ...args }, ctx);
 
   return {
-    id, name, rec,
+    id, name, rec, tmdb: !!raw.__tmdb,
     async getCatalog() {
       if (typeof raw.getCatalog === "function") return asList(await call(raw.getCatalog, {})).map((c) => ({ title: c.title || c.name || String(c.filter), filter: c.filter ?? c.value ?? c.id ?? "" }));
       if (Array.isArray(raw.catalog)) return raw.catalog.map((c) => ({ title: c.title || c.name, filter: c.filter ?? c.value ?? c.id ?? "" }));
@@ -621,7 +622,36 @@ const idb = (() => {
 
 /* ===================== app state ===================== */
 const S = { providers: [], failed: [], pid: "", catalog: [], filter: "", query: "", posts: [], page: 1, hasMore: false, token: 0 };
-const cur = () => S.providers.find((p) => p.id === S.pid);
+const AUTO = "__auto__";
+const cur = () => (S.pid === AUTO ? autoProv() : S.providers.find((p) => p.id === S.pid));
+// Auto: runs every TMDB-style provider in parallel for one title and merges the streams
+function autoProv() {
+  const list = S.providers.filter((x) => x.tmdb);
+  if (list.length < 2) return null;
+  const first = list[0];
+  const tag = (pv, x) => ({ ...x, server: `${pv.name}${x.server && x.server !== pv.name ? " · " + x.server : ""}${x.quality ? " " + x.quality : ""}`, headers: { ...(pv.rec.streamHeaders || {}), ...(x.headers || {}) } });
+  return {
+    id: AUTO, name: "Auto (all providers)", rec: {},
+    getCatalog: () => first.getCatalog(), getPosts: (a) => first.getPosts(a), getSearchPosts: (a) => first.getSearchPosts(a),
+    getMeta: (a) => first.getMeta(a), getEpisodes: (a) => first.getEpisodes(a),
+    getStream: (a) => new Promise((resolve) => {
+      const found = []; let pending = list.length, grace = null, done = false, hard = null;
+      const finish = () => {
+        if (done) return; done = true; clearTimeout(grace); clearTimeout(hard);
+        const seen = new Set();
+        resolve(found.filter((x) => !seen.has(x.link) && seen.add(x.link)).sort((x, y) => (x.type === "embed") - (y.type === "embed")));
+      };
+      hard = setTimeout(finish, 25000);
+      list.forEach((pv) => withTimeout(pv.getStream(a), 24000)
+        .then((r) => {
+          plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
+          if (r.length) { found.push(...r.map((x) => tag(pv, x))); if (!grace) grace = setTimeout(finish, 2500); }
+        })
+        .catch((e) => plog(`[auto] ${pv.name}: ${e.message}`))
+        .finally(() => { if (--pending === 0) finish(); }));
+    }),
+  };
+}
 
 async function initProviders() {
   let recs = [];
@@ -656,7 +686,9 @@ function renderShell() {
   $("#search").hidden = none;
   const sel = $("#psel");
   sel.hidden = S.providers.length < 2;
-  sel.replaceChildren(...S.providers.map((p) => el("option", { value: p.id, selected: p.id === S.pid }, p.name)));
+  const auto = autoProv();
+  sel.replaceChildren(...(auto ? [el("option", { value: AUTO, selected: S.pid === AUTO }, "⚡ Auto (all providers)")] : []),
+    ...S.providers.map((p) => el("option", { value: p.id, selected: p.id === S.pid }, p.name)));
 }
 
 function renderNav() {
@@ -700,6 +732,8 @@ async function fetchPosts(reset) {
 }
 
 async function selectProvider(id) {
+  if (id === AUTO && !autoProv()) id = S.providers[0]?.id || "";
+  store.set("pid", id);
   S.pid = id; S.query = ""; $("#search").value = ""; S.catalog = []; S.filter = "";
   renderShell();
   const p = cur();
@@ -939,7 +973,7 @@ function openManager() {
       if (!added.length) throw new Error(failed.join(" | "));
       msg = { ok: true, text: `Added ${added.map((a) => `“${a.name}”`).join(", ")}.${failed.length ? " Skipped: " + failed.join(" | ") : ""}` };
       file = null;
-      await selectProvider(added[0].id);
+      await selectProvider(autoProv() ? AUTO : added[0].id);
     } catch (e) { msg = { ok: false, text: e.message }; }
     busy = false; draw();
   }
@@ -949,7 +983,7 @@ function openManager() {
     try { await idb.del(p.id); } catch { /* ignore */ }
     S.providers = S.providers.filter((x) => x.id !== p.id);
     msg = { ok: true, text: `Removed “${p.name}”.` };
-    if (S.pid === p.id) await selectProvider(S.providers[0]?.id || ""); else renderShell();
+    if (S.pid === p.id || (S.pid === AUTO && !autoProv())) await selectProvider(S.providers[0]?.id || ""); else renderShell();
     draw();
   }
   draw();
@@ -969,7 +1003,8 @@ $("#search").addEventListener("input", (e) => {
 
 (async () => {
   await initProviders();
-  await selectProvider(S.providers[0]?.id || "");
+  const saved = store.get("pid");
+  await selectProvider(saved && (saved === AUTO ? autoProv() : S.providers.some((x) => x.id === saved)) ? saved : autoProv() ? AUTO : S.providers[0]?.id || "");
 })();
 </script>
 </body>

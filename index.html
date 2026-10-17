@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Reel Room</title>
 <style>
 :root{--bg:#16262b;--panel:#1f343a;--ink:#f2efe9;--mute:#9db0b3;--amber:#f2b544;--line:#31484e}
@@ -541,32 +542,36 @@ let hlsLoader;
 const loadHls = () => (hlsLoader ||= loadScript("https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js")
   .then(() => window.Hls).catch((e) => { hlsLoader = null; throw e; }));
 
-function mountPlayer(box, s, poster, onError) {
+function mountPlayer(box, s, poster, onError, extra) {
   const v = el("video", { controls: true, autoplay: true, playsinline: true });
   if (poster) v.poster = poster;
   box.replaceChildren(v);
-  const hdrs = s.headers && Object.keys(s.headers).length ? s.headers : null;
+  const merged = { ...(extra || {}), ...(s.headers || {}) };
+  const hdrs = Object.keys(merged).length ? merged : null;
   const isHls = s.type === "m3u8" || /\.m3u8(\?|$)/i.test(s.link);
-  // try the direct URL first (free); fall back to the proxy if it fails or headers are required
-  const urls = hdrs ? [proxyUrl(s.link, hdrs)] : [s.link, proxyUrl(s.link, {})];
+  const orig = (() => { try { return new URL(s.link).origin + "/"; } catch { return ""; } })();
+  // attempts: provider headers via proxy, then direct (no Referer); or direct, plain proxy, proxy with the CDN's own origin as Referer
+  const urls = hdrs ? [proxyUrl(s.link, hdrs), s.link] : [s.link, proxyUrl(s.link, {}), proxyUrl(s.link, { Referer: orig })];
   const host = (() => { try { return new URL(s.link).host; } catch { return s.link; } })();
   const log = [];
   let attempt = 0, hls = null, dead = false;
 
   // last resort: ask the proxy what the server really answers, so the error says why
   const finish = async (msg) => {
-    let probe;
-    try {
-      const r = await fetch(urls[urls.length - 1], { headers: { Range: "bytes=0-199" } });
-      const ct = (r.headers.get("content-type") || "").split(";")[0];
-      const txt = /text|json|mpegurl|xml/i.test(ct) ? (await r.text()).slice(0, 160).replace(/\s+/g, " ") : "(binary)";
-      probe = `proxy -> HTTP ${r.status} ${ct} ${txt}`;
-    } catch (e) { probe = "proxy request failed: " + e.message; }
-    if (!dead) onError(msg, [`type=${s.type || "?"} host=${host}`, ...log, probe].join("\n"));
+    const probes = [];
+    for (const h of hdrs ? [hdrs] : [{}, { Referer: orig }]) {
+      try {
+        const r = await fetch(proxyUrl(s.link, h), { headers: { Range: "bytes=0-199" } });
+        const ct = (r.headers.get("content-type") || "").split(";")[0];
+        const txt = /text|json|mpegurl|xml/i.test(ct) ? (await r.text()).slice(0, 100).replace(/\s+/g, " ") : "(binary)";
+        probes.push(`proxy ${JSON.stringify(h).slice(0, 120)} -> HTTP ${r.status} ${ct} ${txt}`);
+      } catch (e) { probes.push("proxy request failed: " + e.message); }
+    }
+    if (!dead) onError(msg, [`type=${s.type || "?"} host=${host}`, ...log, ...probes].join("\n"));
   };
   const fail = (msg) => { if (attempt < urls.length - 1) { attempt++; start(); } else finish(msg); };
   const native = (src) => {
-    v.onerror = () => { log.push(`video error code ${v.error?.code} ${v.error?.message || ""} (try ${attempt + 1})`); fail("This video could not be played."); };
+    v.onerror = () => { log.push(`video error code ${v.error?.code} ${v.error?.message || ""} (${urls[attempt] === s.link ? "direct" : "via proxy"})`); fail("This video could not be played."); };
     v.src = src;
   };
 
@@ -633,7 +638,7 @@ function openDetail(post) {
     if (gone) return;
     const s = streams?.[idx];
     stopPlayer?.(); stopPlayer = null;
-    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => { err = m; errDetail = d || ""; drawBody(); });
+    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => { err = m; errDetail = d || ""; drawBody(); }, p.rec.streamHeaders);
     else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }
@@ -693,7 +698,14 @@ function openManager() {
           el("div", { class: "row" }, el("span", {}, p.name),
             el("button", { disabled: busy, onclick: () => removeProvider(p) }, "Remove")),
           el("input", { type: "url", placeholder: "Base URL (optional, for providers that need it)", value: p.rec.baseUrl || "",
-            onchange: async (e) => { p.rec.baseUrl = e.target.value.trim(); try { await idb.put(p.rec); } catch { /* memory only */ } } }))))
+            onchange: async (e) => { p.rec.baseUrl = e.target.value.trim(); try { await idb.put(p.rec); } catch { /* memory only */ } } }),
+          el("input", { type: "text", placeholder: 'Stream headers JSON (optional) e.g. {"Referer":"https://site.com/"}',
+            value: p.rec.streamHeaders ? JSON.stringify(p.rec.streamHeaders) : "",
+            onchange: async (e) => {
+              try { p.rec.streamHeaders = e.target.value.trim() ? JSON.parse(e.target.value) : undefined; e.target.style.outline = ""; }
+              catch { e.target.style.outline = "2px solid #ff9b8a"; return; }
+              try { await idb.put(p.rec); } catch { /* memory only */ }
+            } }))))
       : el("p", { class: "note" }, "No providers installed.");
     const failed = S.failed.map((f) => el("p", { class: "note err" }, `${f.id}: ${f.error}`));
     const fileIn = el("input", { type: "file", accept: ".zip,application/zip", onchange: (e) => { file = e.target.files[0] || null; draw(); } });
@@ -728,7 +740,7 @@ function openManager() {
           const prov = await loadProvider(rec);
           rec.id = prov.id;
           const old = S.providers.find((x) => x.id === prov.id);
-          if (old) rec.baseUrl = old.rec.baseUrl || "";
+          if (old) { rec.baseUrl = old.rec.baseUrl || ""; rec.streamHeaders = old.rec.streamHeaders; }
           try { await idb.put(rec); } catch { /* memory only */ }
           S.providers = S.providers.filter((x) => x.id !== prov.id).concat(prov);
           S.failed = S.failed.filter((x) => x.id !== prov.id);

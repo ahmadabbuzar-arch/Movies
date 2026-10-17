@@ -587,8 +587,11 @@ const normPosts = (x) => asList(x).map((o) => {
 }).filter(Boolean);
 const normStreams = (x) => asList(x).map((o) => {
   if (typeof o === "string") o = { link: o };
-  const link = pick(o, "link", "url", "file", "src", "stream", "streamUrl", "source", "playlist");
+  let link = pick(o, "link", "url", "file", "src", "stream", "streamUrl", "source", "playlist");
   if (!link) return null;
+  link = String(link).trim();
+  if (/^\/\//.test(link)) link = "https:" + link;
+  if (!/^https?:\/\//i.test(link)) { plog(`skipped non-http stream: ${link.slice(0, 70)}`); return null; }
   const sub = pick(o, "subtitles", "subtitle", "tracks");
   return { ...o, link: String(link), type: pick(o, "type", "format") ? String(pick(o, "type", "format")).toLowerCase().replace("hls", "m3u8") : guessType(String(link)),
     server: pick(o, "server", "name", "title", "label", "provider") || "", quality: pick(o, "quality", "res", "resolution") || "", headers: pick(o, "headers", "header") || undefined, subtitles: Array.isArray(sub) ? sub : [] };
@@ -766,7 +769,7 @@ function mountPlayer(box, s, poster, onError, extra) {
   box.replaceChildren(v);
   const merged = { ...(extra || {}), ...(s.headers || {}) };
   const hdrs = Object.keys(merged).length ? merged : null;
-  const isHls = s.type === "m3u8" || /\.m3u8(\?|$)/i.test(s.link);
+  let isHls = s.type === "m3u8" || /\.m3u8(\?|$)/i.test(s.link), triedHls = false;
   const orig = (() => { try { return new URL(s.link).origin + "/"; } catch { return ""; } })();
   // attempts: provider headers via proxy, then direct (no Referer); or direct, plain proxy, proxy with the CDN's own origin as Referer
   const urls = hdrs ? [proxyUrl(s.link, hdrs), s.link] : [s.link, proxyUrl(s.link, {}), proxyUrl(s.link, { Referer: orig })];
@@ -785,9 +788,13 @@ function mountPlayer(box, s, poster, onError, extra) {
         probes.push(`proxy ${JSON.stringify(h).slice(0, 120)} -> HTTP ${r.status} ${ct} ${txt}`);
       } catch (e) { probes.push("proxy request failed: " + e.message); }
     }
-    if (!dead) onError(msg, [`type=${s.type || "?"} host=${host}`, ...log, ...probes].join("\n"));
+    if (!dead) onError(msg, [`type=${s.type || "?"} host=${host}`, `link=${String(s.link).slice(0, 140)}`, ...log, ...probes].join("\n"));
   };
-  const fail = (msg) => { if (attempt < urls.length - 1) { attempt++; start(); } else finish(msg); };
+  const fail = (msg) => {
+    if (attempt < urls.length - 1) { attempt++; start(); }
+    else if (!s.type && !isHls && !triedHls) { triedHls = true; isHls = true; attempt = 0; log.push("retrying as HLS"); start(); }
+    else finish(msg);
+  };
   const native = (src) => {
     v.onerror = () => { log.push(`video error code ${v.error?.code} ${v.error?.message || ""} (${urls[attempt] === s.link ? "direct" : "via proxy"})`); fail("This video could not be played."); };
     v.src = src;

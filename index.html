@@ -1096,6 +1096,7 @@ function openDetail(post) {
   const host = $("#detail");
   let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false;
 
+  let more = null; // must exist before the first draw()
   const close = () => { gone = true; stopPlayer?.(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
   window.addEventListener("keydown", esc);
@@ -1168,7 +1169,6 @@ function openDetail(post) {
   }
 
   draw();
-  let more = null;
   withTimeout(Promise.resolve(p.getMore ? p.getMore({ link: post.link }) : []), 20000).then((l) => { if (!gone) { more = l || []; drawBody(); } }).catch(() => {});
   withTimeout(p.getMeta({ link: post.link })).then((m) => {
     if (gone) return;

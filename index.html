@@ -224,14 +224,23 @@ function findProviders(files) {
   const dirs = new Set([...files.keys()].filter((k) => /\.(c|m)?js$/i.test(k)).map((k) => (k.includes("/") ? k.slice(0, k.lastIndexOf("/")) : "")));
   const sniff = (d) => [...files].some(([k, v]) => /\.(c|m)?js$/i.test(k) && dirname(k) === d && /getStream|getPosts|getSearchPosts|getStreams/.test(v));
   const looks = (d) => ENTRY_NAMES.some((n) => has(d, n)) || (has(d, "stream.js") && (has(d, "posts.js") || has(d, "catalog.js") || has(d, "search.js"))) || sniff(d);
-  if (looks("")) return [{ dir: "", files: Object.fromEntries(files) }];
+  const jsRe = /\.(c|m)?js$/i;
+  const bundles = [...files].filter(([k, v]) => jsRe.test(k) && /(^|\/)providers\/[^/]+$/.test(k) && /getStreams/.test(v) && !/\.min\./.test(k));
+  if (bundles.length) return bundles.map(([k, v]) => { const n = k.split("/").pop(); return { dir: k.slice(0, k.lastIndexOf("/")), entry: n, files: { [n]: v } }; });
+  // several single-file providers sitting in one folder -> one provider per file
+  const split = (d, f) => {
+    const direct = [...f].filter(([k, v]) => jsRe.test(k.slice(d ? d.length + 1 : 0)) && !k.slice(d ? d.length + 1 : 0).includes("/") && /getStreams/.test(v));
+    const named = ENTRY_NAMES.some((n) => f.has(n)) || (f.has("stream.js") && f.has("posts.js"));
+    return direct.length >= 2 && !named ? direct.map(([k, v]) => { const n = k.split("/").pop(); return { dir: d, entry: n, files: { [n]: v } }; }) : null;
+  };
+  if (looks("")) { const sp = split("", files); return sp || [{ dir: "", files: Object.fromEntries(files) }]; }
   const kept = [];
   for (const d of [...dirs].filter(looks).sort((a, b) => a.split("/").length - b.split("/").length))
     if (!kept.some((k) => d.startsWith(k + "/"))) kept.push(d);
-  return kept.map((d) => ({
-    dir: d,
-    files: Object.fromEntries([...files].filter(([k]) => k.startsWith(d + "/")).map(([k, v]) => [k.slice(d.length + 1), v])),
-  }));
+  return kept.flatMap((d) => {
+    const sub = new Map([...files].filter(([k]) => k.startsWith(d + "/")).map(([k, v]) => [k.slice(d.length + 1), v]));
+    return split(d, new Map([...files].filter(([k]) => k.startsWith(d + "/")).map(([k, v]) => [k, v]))) || [{ dir: d, files: Object.fromEntries(sub) }];
+  });
 }
 
 /* ===================== provider runtime ===================== */
@@ -390,6 +399,7 @@ const nodeShims = (pf, axios) => ({
   "base-64": b64,
   "html-entities": { decode: (t) => new DOMParser().parseFromString(String(t), "text/html").documentElement.textContent, encode: (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`) },
   "form-data": FormData,
+  "cheerio-without-node-native": null, "react-native-cheerio": null,
   "user-agents": function () { return { toString: () => commonHeaders["User-Agent"] }; },
 });
 
@@ -423,7 +433,7 @@ async function loadProvider(rec) {
     const dir = dirname(path);
     const req = (name) => {
       if (name === "axios") return axios;
-      if (name === "cheerio") return cheerio;
+      if (name === "cheerio" || name === "cheerio-without-node-native" || name === "react-native-cheerio") return cheerio;
       name = name.replace(/^node:/, "");
       if (cdn[name]) return cdn[name];
       if (shims[name]) return shims[name];
@@ -446,12 +456,13 @@ async function loadProvider(rec) {
   let manifest = {};
   try { manifest = JSON.parse(files["manifest.json"] || files["package.json"] || "{}"); } catch { /* ignore */ }
   const safeLoad = (n) => { try { return load(n); } catch (e) { if (n === entryMain) throw e; console.warn(`[provider] ${n}: ${e.message}`); return {}; } };
-  const entryMain = [manifest.main, ...ENTRY_NAMES].filter(Boolean).map((n) => n.replace(/^\.\//, "")).find((n) => n in files);
+  if (rec.entry) manifest = {};
+  const entryMain = [rec.entry, manifest.main, ...ENTRY_NAMES].filter(Boolean).map((n) => n.replace(/^\.\//, "")).find((n) => n in files);
   let raw = {};
   for (const n of ["catalog", "posts", "search", "meta", "stream", "episodes"]) if (`${n}.js` in files && `${n}.js` !== entryMain) raw = { ...raw, ...safeLoad(`${n}.js`) };
   if (entryMain) raw = { ...raw, ...load(entryMain) };
   // last resort: scan every js file for the functions we need
-  if (typeof raw.getStream !== "function" && typeof raw.getStreams !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function"))
+  if (typeof raw.getStream !== "function" && typeof raw.getStreams !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function" && typeof raw.getStreams !== "function"))
     for (const n of Object.keys(files)) if (/\.(c|m)?js$/i.test(n) && n !== entryMain && /getStream|getPosts|getSearchPosts|getMeta|getEpisodes/.test(files[n])) raw = { ...safeLoad(n), ...raw };
   // aliases used by different provider styles
   const alias = (to, ...from) => { if (typeof raw[to] !== "function") for (const f of from) if (typeof raw[f] === "function") { raw[to] = raw[f]; break; } };
@@ -460,6 +471,54 @@ async function loadProvider(rec) {
   alias("getStream", "getStreams", "getLinks", "getSources", "getVideo", "getVideoLinks", "getPlayLinks");
   alias("getMeta", "getInfo", "getDetails", "getDetail", "getMetadata");
   alias("getEpisodes", "getEpisodeLinks", "getSeasons");
+  if (typeof raw.getStreams === "function" && typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function") {
+    // Nuvio-style provider: getStreams(tmdbId, mediaType, season, episode). Browse/search comes from Cinemeta (no API key).
+    const CIN = "https://v3-cinemeta.strem.io", metaCache = new Map();
+    const cj = async (ctx, path) => { const r = await ctx.fetch(CIN + path); if (!r.ok) throw new Error(`Catalog ${r.status}`); return r.json(); };
+    const toPost = (m) => ({ title: m.name, link: `${m.type}:${m.id}`, image: m.poster || "" });
+    raw.getCatalog = async () => [
+      { title: "Popular Movies", filter: "movie/top" }, { title: "Popular Series", filter: "series/top" },
+      { title: "Top Rated Movies", filter: "movie/imdbRating" }, { title: "Top Rated Series", filter: "series/imdbRating" },
+    ];
+    raw.getPosts = async ({ filter, page }, ctx) => {
+      const skip = ((page || 1) - 1) * 100;
+      return ((await cj(ctx, `/catalog/${filter || "movie/top"}${skip ? `/skip=${skip}` : ""}.json`)).metas || []).map(toPost);
+    };
+    raw.getSearchPosts = async ({ query, page }, ctx) => {
+      if ((page || 1) > 1) return [];
+      const q = encodeURIComponent(query);
+      const [m, t] = await Promise.all(["movie", "series"].map((k) => cj(ctx, `/catalog/${k}/top/search=${q}.json`).catch(() => ({ metas: [] }))));
+      return [...(m.metas || []), ...(t.metas || [])].map(toPost);
+    };
+    const getCin = async (ctx, link) => {
+      if (metaCache.has(link)) return metaCache.get(link);
+      const [type, id] = link.split(":");
+      const m = (await cj(ctx, `/meta/${type}/${id}.json`)).meta || {};
+      metaCache.set(link, m); return m;
+    };
+    raw.getMeta = async ({ link }, ctx) => {
+      const m = await getCin(ctx, link), type = link.split(":")[0];
+      const tmdb = m.moviedb_id;
+      const out = { title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
+      if (!tmdb) throw new Error("This title has no TMDB id, so this provider cannot play it.");
+      if (type === "movie") out.linkList = [{ title: "Play", directLinks: [{ title: "Play", link: String(tmdb), type: "movie" }] }];
+      else {
+        const seasons = [...new Set((m.videos || []).map((v) => v.season))].filter((n) => n != null).sort((a, b) => a - b);
+        out.linkList = seasons.map((n) => ({ title: n === 0 ? "Specials" : `Season ${n}`, episodesLink: `${link}|${n}` }));
+      }
+      return out;
+    };
+    raw.getEpisodes = async ({ link }, ctx) => {
+      const [l, sn] = link.split("|"), m = await getCin(ctx, l);
+      return (m.videos || []).filter((v) => String(v.season) === sn).sort((a, b) => a.episode - b.episode)
+        .map((v) => ({ title: `E${v.episode}${v.name || v.title ? " · " + (v.name || v.title) : ""}`, link: `${m.moviedb_id}:${v.season}:${v.episode}` }));
+    };
+    raw.getStream = async ({ link }) => {
+      const [tmdb, season, episode] = link.split(":");
+      return raw.__getStreams(tmdb, season != null ? "tv" : "movie", season != null ? +season : undefined, episode != null ? +episode : undefined);
+    };
+    raw.__getStreams = raw.getStreams;
+  }
   if (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts === "function") raw.getPosts = (a, c) => raw.getSearchPosts({ ...a, query: a.filter || "a", searchQuery: a.filter || "a" }, c);
   if (typeof raw.getStream !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function"))
     throw new Error(`needs getPosts and getStream (found: ${Object.keys(raw).join(", ") || "nothing"})`);
@@ -825,7 +884,7 @@ function openManager() {
       el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"),
       el("h2", {}, "Providers"), list, failed,
       el("h3", {}, "Upload provider zip"),
-      el("p", { class: "note" }, "Native (index.js / main.js), Vega-style (posts.js, meta.js, stream.js…) and single .js providers. A zip with many providers installs them all. Provider code runs in your browser, so only upload zips you trust."),
+      el("p", { class: "note" }, "Native (index.js / main.js), Nuvio-style (getStreams), Vega-style (posts.js, meta.js, stream.js…) and single .js providers. A zip with many providers installs them all. Provider code runs in your browser, so only upload zips you trust."),
       fileIn,
       el("button", { class: "primary", disabled: busy || !file, onclick: upload }, busy ? "Working…" : "Upload & install"),
       el("h3", {}, "Proxy URL"),
@@ -845,13 +904,13 @@ function openManager() {
         if (!files.size) throw new Error("Zip has no .js files");
       }
       const found = findProviders(files);
-      if (!found.length) throw new Error("No provider found (need index.js/main.js, or posts.js + stream.js, or any js exporting getPosts + getStream)");
+      if (!found.length) throw new Error("No provider found (need index.js/main.js, posts.js + stream.js, or any js exporting getPosts + getStream, or Nuvio-style getStreams)");
       const base = file.name.replace(/\.zip$/i, "");
       const added = [], failed = [];
       for (const f of found) {
-        const folder = f.dir ? f.dir.split("/").pop() : base;
+        const folder = f.entry ? f.entry.replace(/\.(c|m)?js$/i, "") : f.dir ? f.dir.split("/").pop() : base;
         try {
-          const rec = { id: folder, folder, files: f.files, baseUrl: "" };
+          const rec = { id: folder, folder, files: f.files, baseUrl: "", entry: f.entry };
           const prov = await loadProvider(rec);
           rec.id = prov.id;
           const old = S.providers.find((x) => x.id === prov.id);

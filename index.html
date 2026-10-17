@@ -475,9 +475,18 @@ async function loadProvider(rec) {
       module.exports, req, module, path, dir, { env: {}, platform: "browser", version: "v18.0.0", cwd: () => "/", nextTick: (f, ...a) => setTimeout(() => f(...a)) }, pfetch, window.Buffer || BufferShim, window, provConsole);
     return module.exports;
   }
+  const baseCtx = { fetch: pfetch, axios, cheerio, commonHeaders, extractors }; baseCtx.providerContext = baseCtx;
+  const unwrap = (m) => { // object, class, factory function or instance -> plain object of functions
+    if (typeof m === "function") { try { m = /^class\b/.test(Function.prototype.toString.call(m)) ? new m(baseCtx) : m(baseCtx); } catch { return {}; } }
+    if (!m || typeof m !== "object") return {};
+    const o = { ...m };
+    for (let pr = Object.getPrototypeOf(m); pr && pr !== Object.prototype; pr = Object.getPrototypeOf(pr))
+      for (const k of Object.getOwnPropertyNames(pr)) if (k !== "constructor" && typeof m[k] === "function" && !(k in o)) o[k] = m[k].bind(m);
+    return o;
+  };
   const load = (path) => {
-    const m = runModule(path);
-    return m.default && typeof m.default === "object" ? { ...m, ...m.default } : { ...m };
+    const m = runModule(path), d = m && m.default;
+    return d && (typeof d === "object" || typeof d === "function") ? { ...unwrap(m), ...unwrap(d) } : unwrap(m);
   };
 
   let manifest = {};
@@ -491,6 +500,8 @@ async function loadProvider(rec) {
   // last resort: scan every js file for the functions we need
   if (typeof raw.getStream !== "function" && typeof raw.getStreams !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function" && typeof raw.getStreams !== "function"))
     for (const n of Object.keys(files)) if (/\.(c|m)?js$/i.test(n) && n !== entryMain && /getStream|getPosts|getSearchPosts|getMeta|getEpisodes/.test(files[n])) raw = { ...safeLoad(n), ...raw };
+  if (typeof raw.getStream !== "function" && typeof raw.getStreams !== "function" && typeof raw.getPosts !== "function")
+    for (const v of Object.values(raw)) if (v && typeof v === "object" && (v.getStream || v.getStreams || v.getPosts)) { raw = { ...unwrap(v), ...raw }; break; }
   // aliases used by different provider styles
   const alias = (to, ...from) => { if (typeof raw[to] !== "function") for (const f of from) if (typeof raw[f] === "function") { raw[to] = raw[f]; break; } };
   alias("getPosts", "getHome", "getCatalogPosts", "getList", "getItems", "getMovies");
@@ -526,7 +537,7 @@ async function loadProvider(rec) {
     raw.getMeta = async ({ link }, ctx) => {
       const m = await getCin(ctx, link), type = link.split(":")[0];
       const tmdb = m.moviedb_id;
-      const out = { background: m.background || "", title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
+      const out = { tmdb, background: m.background || "", title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
       if (!tmdb) throw new Error("This title has no TMDB id, so this provider cannot play it.");
       if (type === "movie") out.linkList = [{ title: "Play", directLinks: [{ title: "Play", link: String(tmdb), type: "movie" }] }];
       else {
@@ -640,15 +651,36 @@ const S = { providers: [], failed: [], pid: "", catalog: [], filter: "", query: 
 const AUTO = "__auto__";
 const cur = () => (S.pid === AUTO ? autoProv() : S.providers.find((p) => p.id === S.pid));
 // Auto: runs every TMDB-style provider in parallel for one title and merges the streams
+const TITLES = new Map();
+async function viaSearch(pv, i) { // catalog-style provider: search by title, then walk meta -> episodes -> stream
+  const n = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(), q = n(i.title);
+  const posts = await pv.getSearchPosts({ query: i.title, page: 1 });
+  const hit = posts.find((x) => n(x.title) === q) || posts.find((x) => n(x.title).startsWith(q)) || posts.find((x) => n(x.title).includes(q));
+  if (!hit) { plog(`[auto] ${pv.name}: no title match`); return []; }
+  const m = await pv.getMeta({ link: hit.link }), groups = m.linkList || [], links = [];
+  if (i.movie) { for (const g of groups) for (const d of g.directLinks || []) links.push({ link: d.link, type: d.type || "movie" }); if (!groups.length) links.push({ link: hit.link, type: "movie" }); }
+  else {
+    const g = groups.find((x) => x.episodesLink && new RegExp(`season\\s*0*${i.season}\\b`, "i").test(x.title || "")) || groups.find((x) => x.episodesLink);
+    if (g) { const eps = await pv.getEpisodes({ link: g.episodesLink }); const e = eps.find((x) => new RegExp(`(^|\\D)0*${i.episode}(\\D|$)`).test(x.title || "")) || eps[i.episode - 1]; if (e) links.push({ link: e.link, type: "series" }); }
+  }
+  const out = [];
+  for (const l of links.slice(0, 3)) { try { out.push(...(await pv.getStream(l))); } catch { /* next */ } }
+  return out;
+}
+const autoStream = (pv, a) => {
+  if (pv.tmdb) return pv.getStream(a);
+  const [tmdb, season, episode] = a.link.split(":"), info = TITLES.get(tmdb);
+  return info ? viaSearch(pv, { ...info, movie: season == null, season: +season, episode: +episode }) : [];
+};
 function autoProv() {
-  const list = S.providers.filter((x) => x.tmdb);
-  if (list.length < 1) return null;
-  const first = list[0];
+  const list = S.providers, tm = list.filter((x) => x.tmdb);
+  if (!tm.length) return S.providers[0] || null;
+  const first = tm[0];
   const tag = (pv, x) => ({ ...x, provider: pv.name, server: `${pv.name}${x.server && x.server !== pv.name ? " · " + x.server : ""}${x.quality ? " " + x.quality : ""}`, headers: { ...(pv.rec.streamHeaders || {}), ...(x.headers || {}) } });
   return {
     id: AUTO, name: "Auto (all providers)", rec: {},
     getCatalog: () => first.getCatalog(), getPosts: (a) => first.getPosts(a), getSearchPosts: (a) => first.getSearchPosts(a),
-    getMeta: (a) => first.getMeta(a), getEpisodes: (a) => first.getEpisodes(a),
+    getMeta: async (a) => { const m = await first.getMeta(a); if (m.tmdb) TITLES.set(String(m.tmdb), { title: m.title, year: m.year }); return m; }, getEpisodes: (a) => first.getEpisodes(a),
     getStream: (a) => new Promise((resolve) => {
       const found = []; let grace = null, done = false, hard = null;
       const finish = () => {
@@ -661,7 +693,7 @@ function autoProv() {
       const worker = async () => {
         for (let pv; !done && (pv = queue.shift()); ) {
           try {
-            const r = await withTimeout(pv.getStream(a), 25000);
+            const r = await withTimeout(autoStream(pv, a), 25000);
             plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
             if (r.length) { found.push(...r.map((x) => tag(pv, x))); if (!grace) grace = setTimeout(finish, 2500); }
           } catch (e) { plog(`[auto] ${pv.name}: ${e.message}`); }
@@ -1111,19 +1143,25 @@ async function loadRepoProviders() {
   const queue = [...names]; // fetch 8 files at a time; only .js/.json are needed, other file types are ignored
   await Promise.all(Array.from({ length: 8 }, async () => {
     for (let n; (n = queue.shift()); ) {
-      try { const r = await fetch("providers/" + n.split("/").map(encodeURIComponent).join("/")); if (r.ok) files.set("providers/" + n, await r.text()); } catch { /* skip */ }
+      try {
+        const r = await fetch("providers/" + n.split("/").map(encodeURIComponent).join("/")); if (!r.ok) continue;
+        if (/\.zip$/i.test(n)) (await readZip(await r.arrayBuffer())).forEach((v, k) => files.set(`providers/${n.replace(/\.zip$/i, "")}/${k}`, v)); // zips work without unzipping
+        else files.set("providers/" + n, await r.text());
+      } catch (e) { S.failed.push({ id: n, error: e.message }); }
     }
   }));
   for (const f of findProviders(files)) {
     const folder = f.entry ? f.entry.replace(/\.(c|m)?js$/i, "") : f.dir.split("/").pop() || "provider";
     try { S.providers.push(await loadProvider({ id: folder, folder, files: f.files, baseUrl: "", entry: f.entry })); }
-    catch (e) { console.warn(`[skip] ${folder}: ${e.message}`); }
+    catch (e) { S.failed.push({ id: folder, error: e.message }); console.warn(`[skip] ${folder}: ${e.message}`); }
   }
+  S.report = `files read: ${files.size}\nlisted: ${names.length}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
 }
 (async () => {
   setNote("Loading…");
   await loadRepoProviders();
   setNote("");
+  if (location.hash === "#debug") $("#modal").replaceChildren(el("div", { class: "overlay", onclick: (e) => e.target.classList.contains("overlay") && e.target.remove() }, el("pre", { class: "diag" }, S.report || "")));
   S.pid = AUTO; renderShell(); await renderHome();
 })();
 </script>

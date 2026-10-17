@@ -5,7 +5,7 @@ function walk(dir, base = "") {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const rel = base ? `${base}/${e.name}` : e.name;
     if (e.isDirectory()) { if (!/^(node_modules|\.git|\.github|test|tests|__tests__|docs|examples|scripts|coverage)$/i.test(e.name)) out = out.concat(walk(path.join(dir, e.name), rel)); }
-    else if (/\.(c|m)?js$|\.json$/i.test(e.name) && !/(^|\/)(package-lock|tsconfig|index)\.json$|\.d\.ts$|\.map$/i.test(rel)) out.push(rel);
+    else if (/\.(c|m)?js$|\.json$|\.zip$/i.test(e.name) && !/(^|\/)(package-lock|tsconfig|index)\.json$|\.d\.ts$|\.map$/i.test(rel)) out.push(rel);
   }
   return out;
 }

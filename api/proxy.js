@@ -23,7 +23,18 @@ function isPrivateIp(ip) {
 
 async function assertPublicHost(host) {
   if (process.env.PROXY_ALLOW_PRIVATE === "1") return; // local testing only
-  const addrs = net.isIP(host) ? [{ address: host }] : await dns.lookup(host, { all: true });
+  let addrs;
+  if (net.isIP(host)) addrs = [{ address: host }];
+  else {
+    // DNS can fail transiently on serverless (EBUSY / EAI_AGAIN): retry a few times
+    for (let i = 0; ; i++) {
+      try { addrs = await dns.lookup(host, { all: true }); break; }
+      catch (e) {
+        if (i >= 3 || !/EBUSY|EAI_AGAIN|ETIMEOUT|ECONNREFUSED/.test(String(e.code || e.message))) throw e;
+        await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+      }
+    }
+  }
   if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) throw new Error("Blocked address");
 }
 

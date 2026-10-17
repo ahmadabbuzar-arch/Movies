@@ -200,7 +200,7 @@ async function readZip(buf) {
     const name = dec.decode(u8.subarray(p + 46, p + 46 + nl)).replace(/\\/g, "/").replace(/^\.\//, "");
     p += 46 + nl + xl + cl;
     if (name.endsWith("/") || flags & 1) continue;
-    if (!/\.(js|cjs|mjs|json)$/i.test(name) || /(^|\/)(node_modules|__MACOSX)\//.test(name)) continue;
+    if (!/\.(js|cjs|mjs|json)$/i.test(name) || /(^|\/)(node_modules|__MACOSX)\//.test(name) || /\.min\.js$/i.test(name) && usize > 2 * 1024 * 1024) continue;
     if (name.split("/").includes("..") || name.startsWith("/")) continue; // unsafe path
     if (usize > 5 * 1024 * 1024) continue;
     const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
@@ -216,11 +216,14 @@ async function readZip(buf) {
   return files;
 }
 
-// Find provider folders inside the unzipped files: index.js, or posts.js + stream.js
+// Find provider folders inside the unzipped files. Accepts: index/main/provider.js, Vega split files
+// (posts/catalog/search + stream), or any folder whose js files export getStream/getPosts.
+const ENTRY_NAMES = ["index.js", "main.js", "provider.js", "module.js", "app.js"];
 function findProviders(files) {
   const has = (d, f) => files.has(d ? `${d}/${f}` : f);
-  const dirs = new Set([...files.keys()].map((k) => (k.includes("/") ? k.slice(0, k.lastIndexOf("/")) : "")));
-  const looks = (d) => has(d, "index.js") || (has(d, "posts.js") && has(d, "stream.js"));
+  const dirs = new Set([...files.keys()].filter((k) => /\.(c|m)?js$/i.test(k)).map((k) => (k.includes("/") ? k.slice(0, k.lastIndexOf("/")) : "")));
+  const sniff = (d) => [...files].some(([k, v]) => /\.(c|m)?js$/i.test(k) && dirname(k) === d && /getStream|getPosts|getSearchPosts|getStreams/.test(v));
+  const looks = (d) => ENTRY_NAMES.some((n) => has(d, n)) || (has(d, "stream.js") && (has(d, "posts.js") || has(d, "catalog.js") || has(d, "search.js"))) || sniff(d);
   if (looks("")) return [{ dir: "", files: Object.fromEntries(files) }];
   const kept = [];
   for (const d of [...dirs].filter(looks).sort((a, b) => a.split("/").length - b.split("/").length))
@@ -341,6 +344,55 @@ const extractors = new Proxy({}, {
   get: (_t, name) => async () => { console.warn(`[extractor] "${String(name)}" is not supported in this app`); return []; },
 });
 
+// ---- extra node-module shims so more providers load ----
+const cdnLibs = {
+  "crypto-js": ["https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js", () => window.CryptoJS],
+  "qs": null,
+};
+const cdnCache = {};
+const ensureCdn = (name) => {
+  const c = cdnLibs[name];
+  if (!c) return Promise.resolve(null);
+  return (cdnCache[name] ||= window.CryptoJS && name === "crypto-js" ? Promise.resolve(c[1]()) : loadScript(c[0]).then(() => c[1]()).catch(() => null));
+};
+const b64 = {
+  encode: (x) => btoa(unescape(encodeURIComponent(String(x)))),
+  decode: (x) => decodeURIComponent(escape(atob(String(x)))),
+};
+const BufferShim = {
+  from(v, enc) {
+    let u8;
+    if (typeof v === "string") {
+      if (enc === "base64") u8 = Uint8Array.from(atob(v.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+      else if (enc === "hex") u8 = Uint8Array.from(v.match(/.{1,2}/g) || [], (h) => parseInt(h, 16));
+      else u8 = new TextEncoder().encode(v);
+    } else u8 = new Uint8Array(v);
+    u8.toString = (e) => {
+      if (e === "base64") { let t = ""; u8.forEach((c) => (t += String.fromCharCode(c))); return btoa(t); }
+      if (e === "hex") return [...u8].map((c) => c.toString(16).padStart(2, "0")).join("");
+      return new TextDecoder().decode(u8);
+    };
+    return u8;
+  },
+  isBuffer: () => false,
+};
+const nodeShims = (pf, axios) => ({
+  "node-fetch": Object.assign(pf, { default: pf }),
+  "cross-fetch": Object.assign(pf, { default: pf }),
+  "isomorphic-fetch": pf,
+  got: Object.assign(async (u, o = {}) => { const r = await axios({ url: u, ...o }); return { body: typeof r.data === "string" ? r.data : JSON.stringify(r.data), statusCode: r.status }; }, {}),
+  url: { URL, URLSearchParams, parse: (u) => { const x = new URL(u); return { href: x.href, protocol: x.protocol, host: x.host, hostname: x.hostname, pathname: x.pathname, search: x.search, query: Object.fromEntries(x.searchParams), hash: x.hash }; }, resolve: (a, b) => new URL(b, a).href },
+  querystring: { stringify: (o) => new URLSearchParams(o).toString(), parse: (q) => Object.fromEntries(new URLSearchParams(q)) },
+  qs: { stringify: (o) => new URLSearchParams(o).toString(), parse: (q) => Object.fromEntries(new URLSearchParams(q)) },
+  buffer: { Buffer: BufferShim },
+  util: { promisify: (f) => (...a) => new Promise((res, rej) => f(...a, (e, v) => (e ? rej(e) : res(v)))), format: (...a) => a.join(" "), inspect: (x) => JSON.stringify(x) },
+  path: { join: (...a) => a.join("/").replace(/\/+/g, "/"), basename: (p) => p.split("/").pop(), extname: (p) => (p.match(/\.[^./]+$/) || [""])[0], dirname: (p) => p.split("/").slice(0, -1).join("/") },
+  "base-64": b64,
+  "html-entities": { decode: (t) => new DOMParser().parseFromString(String(t), "text/html").documentElement.textContent, encode: (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`) },
+  "form-data": FormData,
+  "user-agents": function () { return { toString: () => commonHeaders["User-Agent"] }; },
+});
+
 const dirname = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 function resolvePath(dir, rel) {
   const out = dir ? dir.split("/") : [];
@@ -357,6 +409,10 @@ async function loadProvider(rec) {
   const axios = makeAxios();
   const cache = {};
   const files = rec.files;
+  const shims = nodeShims(pfetch, axios);
+  const allCode = Object.values(files).join("\n");
+  const cdn = {};
+  for (const n of Object.keys(cdnLibs)) if (new RegExp(`["']${n}["']`).test(allCode)) cdn[n] = await ensureCdn(n);
 
   function runModule(path) {
     if (cache[path]) return cache[path].exports;
@@ -368,14 +424,18 @@ async function loadProvider(rec) {
     const req = (name) => {
       if (name === "axios") return axios;
       if (name === "cheerio") return cheerio;
+      name = name.replace(/^node:/, "");
+      if (cdn[name]) return cdn[name];
+      if (shims[name]) return shims[name];
+      if (name === "crypto-js/aes" || name.startsWith("crypto-js/")) { if (cdn["crypto-js"]) return cdn["crypto-js"][name.split("/")[1].toUpperCase()] || cdn["crypto-js"]; }
       if (!name.startsWith(".")) throw new Error(`Module "${name}" is not available in the browser version`);
       const base = resolvePath(dir, name);
       const hit = [base, base + ".js", base + ".json", base + "/index.js"].find((c) => c in files);
       if (!hit) throw new Error(`Cannot find "${name}" (from ${path})`);
       return hit.endsWith(".json") ? JSON.parse(files[hit]) : runModule(hit);
     };
-    new Function("exports", "require", "module", "__filename", "__dirname", "process", code + `\n//# sourceURL=provider/${path}`)(
-      module.exports, req, module, path, dir, { env: {} });
+    new Function("exports", "require", "module", "__filename", "__dirname", "process", "fetch", "Buffer", "global", code + `\n//# sourceURL=provider/${path}`)(
+      module.exports, req, module, path, dir, { env: {}, platform: "browser", version: "v18.0.0", cwd: () => "/", nextTick: (f, ...a) => setTimeout(() => f(...a)) }, pfetch, window.Buffer || BufferShim, window);
     return module.exports;
   }
   const load = (path) => {
@@ -383,17 +443,30 @@ async function loadProvider(rec) {
     return m.default && typeof m.default === "object" ? { ...m, ...m.default } : { ...m };
   };
 
-  let vega = {};
-  for (const n of ["catalog", "posts", "meta", "stream", "episodes"]) if (`${n}.js` in files) vega = { ...vega, ...load(`${n}.js`) };
-  const raw = { ...vega, ...("index.js" in files ? load("index.js") : {}) };
-  if (typeof raw.getPosts !== "function" || typeof raw.getStream !== "function")
+  let manifest = {};
+  try { manifest = JSON.parse(files["manifest.json"] || files["package.json"] || "{}"); } catch { /* ignore */ }
+  const safeLoad = (n) => { try { return load(n); } catch (e) { if (n === entryMain) throw e; console.warn(`[provider] ${n}: ${e.message}`); return {}; } };
+  const entryMain = [manifest.main, ...ENTRY_NAMES].filter(Boolean).map((n) => n.replace(/^\.\//, "")).find((n) => n in files);
+  let raw = {};
+  for (const n of ["catalog", "posts", "search", "meta", "stream", "episodes"]) if (`${n}.js` in files && `${n}.js` !== entryMain) raw = { ...raw, ...safeLoad(`${n}.js`) };
+  if (entryMain) raw = { ...raw, ...load(entryMain) };
+  // last resort: scan every js file for the functions we need
+  if (typeof raw.getStream !== "function" && typeof raw.getStreams !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function"))
+    for (const n of Object.keys(files)) if (/\.(c|m)?js$/i.test(n) && n !== entryMain && /getStream|getPosts|getSearchPosts|getMeta|getEpisodes/.test(files[n])) raw = { ...safeLoad(n), ...raw };
+  // aliases used by different provider styles
+  const alias = (to, ...from) => { if (typeof raw[to] !== "function") for (const f of from) if (typeof raw[f] === "function") { raw[to] = raw[f]; break; } };
+  alias("getPosts", "getHome", "getCatalogPosts", "getList", "getItems", "getMovies");
+  alias("getSearchPosts", "searchPosts", "search", "getSearch", "searchContent");
+  alias("getStream", "getStreams", "getLinks", "getSources", "getVideo", "getVideoLinks", "getPlayLinks");
+  alias("getMeta", "getInfo", "getDetails", "getDetail", "getMetadata");
+  alias("getEpisodes", "getEpisodeLinks", "getSeasons");
+  if (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts === "function") raw.getPosts = (a, c) => raw.getSearchPosts({ ...a, query: a.filter || "a", searchQuery: a.filter || "a" }, c);
+  if (typeof raw.getStream !== "function" || (typeof raw.getPosts !== "function" && typeof raw.getSearchPosts !== "function"))
     throw new Error(`needs getPosts and getStream (found: ${Object.keys(raw).join(", ") || "nothing"})`);
 
-  let manifest = {};
-  try { manifest = JSON.parse(files["manifest.json"] || "{}"); } catch { /* ignore */ }
   const folder = rec.folder || "provider";
-  const id = typeof raw.id === "string" && raw.id ? raw.id : folder.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "provider";
-  const name = raw.name || manifest.display_name || manifest.name || folder.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const id = typeof raw.id === "string" && raw.id ? raw.id : manifest.value ? String(manifest.value) : folder.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "provider";
+  const name = (typeof raw.name === "string" && raw.name) || manifest.display_name || manifest.name || folder.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   const ctx = {
     fetch: pfetch, axios, cheerio, commonHeaders, extractors,
@@ -409,19 +482,47 @@ async function loadProvider(rec) {
   return {
     id, name, rec,
     async getCatalog() {
-      if (typeof raw.getCatalog === "function") return call(raw.getCatalog, {});
-      if (Array.isArray(raw.catalog)) return raw.catalog.map((c) => ({ title: c.title, filter: c.filter }));
+      if (typeof raw.getCatalog === "function") return asList(await call(raw.getCatalog, {})).map((c) => ({ title: c.title || c.name || String(c.filter), filter: c.filter ?? c.value ?? c.id ?? "" }));
+      if (Array.isArray(raw.catalog)) return raw.catalog.map((c) => ({ title: c.title || c.name, filter: c.filter ?? c.value ?? c.id ?? "" }));
       return [{ title: "Home", filter: "" }];
     },
-    getPosts: ({ filter, page }) => call(raw.getPosts, { filter, page }),
+    getPosts: async ({ filter, page }) => normPosts(await call(raw.getPosts, { filter, page })),
     async getSearchPosts({ query, page }) {
-      return typeof raw.getSearchPosts === "function" ? call(raw.getSearchPosts, { query, searchQuery: query, page }) : [];
+      return typeof raw.getSearchPosts === "function" ? normPosts(await call(raw.getSearchPosts, { query, searchQuery: query, page })) : [];
     },
-    async getMeta({ link }) { return typeof raw.getMeta === "function" ? call(raw.getMeta, { link }) : { title: "" }; },
-    getStream: ({ link, type }) => call(raw.getStream, { link, type: type || "movie" }),
-    async getEpisodes({ link }) { return typeof raw.getEpisodes === "function" ? call(raw.getEpisodes, { link, url: link }) : []; },
+    async getMeta({ link }) { return typeof raw.getMeta === "function" ? normMeta(await call(raw.getMeta, { link })) : { title: "" }; },
+    getStream: async ({ link, type }) => normStreams(await call(raw.getStream, { link, url: link, type: type || "movie" })),
+    async getEpisodes({ link }) { return typeof raw.getEpisodes === "function" ? asList(await call(raw.getEpisodes, { link, url: link })).map((e) => ({ ...e, link: pick(e, "link", "url", "href"), title: pick(e, "title", "name") })) : []; },
   };
 }
+
+/* ===================== response normalisers (accept many provider shapes) ===================== */
+const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; };
+const guessType = (u) => /\.m3u8(\?|$)/i.test(u) ? "m3u8" : /\.mpd(\?|$)/i.test(u) ? "mpd" : /\.(mp4|m4v)(\?|$)/i.test(u) ? "mp4" : /\.mkv(\?|$)/i.test(u) ? "mkv" : /\.webm(\?|$)/i.test(u) ? "webm" : "";
+const asList = (x) => {
+  if (!x) return [];
+  if (Array.isArray(x)) return x;
+  if (typeof x === "object") for (const k of ["streams", "sources", "links", "data", "results", "posts", "items", "list", "episodes"]) if (Array.isArray(x[k])) return x[k];
+  return typeof x === "object" ? [x] : [x];
+};
+const normPosts = (x) => asList(x).map((o) => {
+  if (typeof o === "string") return { title: o, link: o, image: "" };
+  const link = pick(o, "link", "url", "href", "id", "slug", "path");
+  return link ? { ...o, link: String(link), title: String(pick(o, "title", "name", "label") || link), image: pick(o, "image", "poster", "img", "thumbnail", "thumb", "cover") || "" } : null;
+}).filter(Boolean);
+const normStreams = (x) => asList(x).map((o) => {
+  if (typeof o === "string") o = { link: o };
+  const link = pick(o, "link", "url", "file", "src", "stream", "streamUrl", "source", "playlist");
+  if (!link) return null;
+  const sub = pick(o, "subtitles", "subtitle", "tracks");
+  return { ...o, link: String(link), type: pick(o, "type", "format") ? String(pick(o, "type", "format")).toLowerCase().replace("hls", "m3u8") : guessType(String(link)),
+    server: pick(o, "server", "name", "title", "label", "provider") || "", quality: pick(o, "quality", "res", "resolution") || "", headers: pick(o, "headers", "header") || undefined, subtitles: Array.isArray(sub) ? sub : [] };
+}).filter(Boolean);
+const normMeta = (m) => {
+  m = m && typeof m === "object" ? m : {};
+  return { ...m, title: pick(m, "title", "name") || "", synopsis: pick(m, "synopsis", "description", "overview", "plot", "summary") || "", image: pick(m, "image", "poster", "img", "thumbnail") || "",
+    year: pick(m, "year", "releaseYear") || "", linkList: (m.linkList || m.links || []).map((g) => ({ ...g, directLinks: (g.directLinks || g.links || []).map((d) => ({ ...d, link: pick(d, "link", "url", "href"), title: pick(d, "title", "name") })) })) };
+};
 
 /* ===================== storage (IndexedDB) ===================== */
 const idb = (() => {
@@ -543,8 +644,17 @@ const loadHls = () => (hlsLoader ||= loadScript("https://cdnjs.cloudflare.com/aj
   .then(() => window.Hls).catch((e) => { hlsLoader = null; throw e; }));
 
 function mountPlayer(box, s, poster, onError, extra) {
+  if (s.type === "embed" || s.type === "iframe" || s.type === "page") {
+    const f = el("iframe", { src: s.link, allowfullscreen: true, allow: "autoplay; fullscreen; picture-in-picture", referrerpolicy: "no-referrer", style: "width:100%;aspect-ratio:16/9;border:0;background:#000" });
+    box.replaceChildren(f);
+    return () => { f.src = "about:blank"; };
+  }
   const v = el("video", { controls: true, autoplay: true, playsinline: true });
   if (poster) v.poster = poster;
+  for (const [k, t] of (s.subtitles || []).entries()) {
+    const u = t.uri || t.url || t.file || t.link; if (!u) continue;
+    v.append(el("track", { kind: "subtitles", src: proxyUrl(u, {}), label: t.title || t.lang || t.language || `Sub ${k + 1}`, srclang: (t.language || t.lang || "en").slice(0, 2), default: k === 0 }));
+  }
   box.replaceChildren(v);
   const merged = { ...(extra || {}), ...(s.headers || {}) };
   const hdrs = Object.keys(merged).length ? merged : null;
@@ -708,14 +818,14 @@ function openManager() {
             } }))))
       : el("p", { class: "note" }, "No providers installed.");
     const failed = S.failed.map((f) => el("p", { class: "note err" }, `${f.id}: ${f.error}`));
-    const fileIn = el("input", { type: "file", accept: ".zip,application/zip", onchange: (e) => { file = e.target.files[0] || null; draw(); } });
+    const fileIn = el("input", { type: "file", accept: ".zip,.js,.cjs,.mjs,application/zip,text/javascript", onchange: (e) => { file = e.target.files[0] || null; draw(); } });
     const proxyIn = el("input", { type: "text", value: store.get("proxyUrl"), placeholder: "/api/proxy (default, same site)",
       onchange: (e) => store.set("proxyUrl", e.target.value.trim()) });
     const sec = el("section", { class: "detail manage", onclick: (e) => e.stopPropagation() },
       el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"),
       el("h2", {}, "Providers"), list, failed,
       el("h3", {}, "Upload provider zip"),
-      el("p", { class: "note" }, "Native (index.js) and Vega-style (posts.js, meta.js, stream.js…) providers. A zip with many providers installs them all. Provider code runs in your browser, so only upload zips you trust."),
+      el("p", { class: "note" }, "Native (index.js / main.js), Vega-style (posts.js, meta.js, stream.js…) and single .js providers. A zip with many providers installs them all. Provider code runs in your browser, so only upload zips you trust."),
       fileIn,
       el("button", { class: "primary", disabled: busy || !file, onclick: upload }, busy ? "Working…" : "Upload & install"),
       el("h3", {}, "Proxy URL"),
@@ -728,9 +838,14 @@ function openManager() {
   async function upload() {
     busy = true; msg = null; draw();
     try {
-      const files = await readZip(await file.arrayBuffer());
+      let files;
+      if (/\.(c|m)?js$/i.test(file.name)) files = new Map([["index.js", await file.text()]]);
+      else {
+        files = await readZip(await file.arrayBuffer());
+        if (!files.size) throw new Error("Zip has no .js files");
+      }
       const found = findProviders(files);
-      if (!found.length) throw new Error("No provider found in zip (need index.js, or posts.js + stream.js)");
+      if (!found.length) throw new Error("No provider found (need index.js/main.js, or posts.js + stream.js, or any js exporting getPosts + getStream)");
       const base = file.name.replace(/\.zip$/i, "");
       const added = [], failed = [];
       for (const f of found) {

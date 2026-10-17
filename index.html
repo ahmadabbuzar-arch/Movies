@@ -605,7 +605,8 @@ async function loadProvider(rec) {
       if ((Array.isArray(res) && res.length) || typeof raw.getStreamsRaw !== "function") return res;
       // nothing the extractors could unpack: offer the provider's embed pages (played in an iframe)
       const rr = await raw.getStreamsRaw(...args);
-      return (Array.isArray(rr) ? rr : []).filter((x) => x && /^https?:\/\//i.test(x.url || "")).map((x) => ({ ...x, type: guessType(x.url) || "embed" }));
+      const looksEmbed = (u) => { try { const x = new URL(u); return /vidmoly|filemoon|streamhide|voe\.|dood|streamtape|mixdrop|vidhide|vtube|streamwish|filelions|lulustream|upstream|vidoza|embed|\/e\/|\/v\/|\/player|iframe|\/play\b/i.test(x.host + x.pathname); } catch { return false; } };
+      return (Array.isArray(rr) ? rr : []).filter((x) => x && /^https?:\/\//i.test(x.url || "") && (guessType(x.url) || looksEmbed(x.url))).map((x) => ({ ...x, type: guessType(x.url) || "embed" }));
     };
     raw.__getStreams = raw.getStreams;
     raw.__tmdb = true;
@@ -1114,6 +1115,7 @@ function openDetail(post) {
         eps.list && eps.list.length === 0 && el("span", { class: "note" }, "No episodes found."),
         (eps.list || []).map((e, k) => el("button", { onclick: () => play(e.link, "series") }, e.title || `Episode ${k + 1}`))));
       for (const g of meta.linkList) {
+        if (meta.linkList.length === 1 && !g.episodesLink && (g.directLinks || []).length === 1) continue; // single movie link: already autoplays
         nodes.push(el("div", { class: "alts" },
           el("b", {}, g.title || g.quality || "Links"),
           (g.directLinks || []).map((d, k) => el("button", { onclick: () => play(d.link, d.type || meta.type) }, d.title || `Play ${k + 1}`)),

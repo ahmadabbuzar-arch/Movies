@@ -6,63 +6,53 @@
 <meta name="referrer" content="no-referrer">
 <title>Reel Room</title>
 <style>
-:root{--bg:#16262b;--panel:#1f343a;--ink:#f2efe9;--mute:#9db0b3;--amber:#f2b544;--line:#31484e}
+:root{--bg:#141414;--panel:#1f1f1f;--ink:#fff;--mute:#a3a3a3;--red:#e50914;--line:#333;--amber:#e50914}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
 button,input,select{font:inherit;color:inherit}
 [hidden]{display:none!important}
-header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:20px clamp(16px,4vw,48px);border-bottom:1px solid var(--line)}
-h1{margin:0;font:700 1.8rem Georgia,serif;letter-spacing:.01em;color:var(--amber)}
-.tools{display:flex;gap:8px;flex-wrap:wrap}
-input,select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;max-width:100%}
-input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-main{padding:20px clamp(16px,4vw,48px)}
-nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px}
-nav button,.alts button{background:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;white-space:nowrap}
-nav .on,.alts .on{background:var(--amber);border-color:var(--amber);color:#1b1b1b}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
-.card{background:none;border:0;padding:0;text-align:left;cursor:pointer}
+header{position:sticky;top:0;z-index:4;display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px clamp(16px,4vw,48px);background:linear-gradient(#000e,#000a);backdrop-filter:blur(6px)}
+h1{margin:0;font:900 1.7rem system-ui,sans-serif;letter-spacing:.04em;color:var(--red);text-transform:uppercase}
+input,select{background:#000;border:1px solid var(--line);border-radius:4px;padding:8px 12px;max-width:100%}
+#search{width:min(260px,52vw)}
+input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid #fff;outline-offset:2px}
+main{padding:12px clamp(16px,4vw,48px) 40px}
+nav{display:flex;gap:8px;overflow-x:auto;padding:8px 0 14px}
+nav button,.alts button{background:#2a2a2a;border:0;border-radius:4px;padding:7px 16px;cursor:pointer;white-space:nowrap}
+nav .on,.alts .on{background:var(--red);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.card{background:none;border:0;padding:0;text-align:left;cursor:pointer;transition:transform .15s}
+.card:hover{transform:scale(1.05)}
 .card img{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--panel);border-radius:4px;display:block}
-.card span{display:block;margin-top:6px;font-size:.9rem;color:var(--mute)}
-.card:hover span{color:var(--ink)}
-.note{padding:8px 0;color:var(--mute);margin:0}.err{color:#ff9b8a}.ok{color:#8fd694}
-.empty{max-width:520px;margin:12vh auto;padding:0 20px}
-.empty h2{font:700 1.6rem Georgia,serif;margin:0 0 8px}
-code{background:var(--panel);padding:1px 6px;border-radius:4px;word-break:break-all}
-.overlay{position:fixed;inset:0;background:rgba(5,12,14,.85);display:grid;place-items:start center;overflow:auto;padding:4vh 12px;z-index:5}
-.detail{background:var(--panel);width:min(900px,100%);border-radius:8px;padding:16px;position:relative}
-.detail video,.novid{width:100%;aspect-ratio:16/9;background:#000;border-radius:6px;display:block}
+.card span{display:block;margin-top:5px;font-size:.85rem;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card:hover span{color:#fff}
+.note{padding:8px 0;color:var(--mute);margin:0}.err{color:#ff6b6b}.ok{color:#6fcf7f}
+.empty{max-width:520px;margin:18vh auto;padding:0 20px;text-align:center}
+.empty h2{font:800 1.6rem system-ui;margin:0 0 8px}
+.overlay{position:fixed;inset:0;background:#000d;display:grid;place-items:start center;overflow:auto;padding:4vh 12px;z-index:6}
+.detail{background:var(--panel);width:min(920px,100%);border-radius:8px;overflow:hidden;position:relative;padding-bottom:16px}
+.detail>*:not(video):not(.novid):not(div:first-of-type){margin-left:16px;margin-right:16px}
+.detail video,.novid,.detail iframe{width:100%;aspect-ratio:16/9;background:#000;display:block}
 .novid{display:grid;place-items:center;color:var(--mute);padding:16px;text-align:center}
-.close{position:absolute;top:-2px;right:12px;transform:translateY(-100%);background:none;border:0;color:var(--mute);cursor:pointer}
-.alts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.close{position:absolute;top:8px;right:8px;z-index:2;background:#000b;border:0;border-radius:50%;width:34px;height:34px;color:#fff;cursor:pointer;font-size:0}
+.close::before{content:"\2715";font-size:16px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px 0}
+.sel{display:grid;gap:2px;font-size:.72rem;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.sel select{font-size:.95rem;text-transform:none;letter-spacing:0;color:#fff;min-width:120px}
+.alts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 16px 0;align-items:center}
 .alts b{font-size:.9rem}
-.detail h2{font:700 1.4rem Georgia,serif;margin:14px 0 4px}.detail small{color:var(--mute);font:400 1rem system-ui}
-.detail h3{font:700 1.1rem Georgia,serif;margin:8px 0 0}
-.detail p{color:var(--mute);max-width:70ch;margin:0}
-button.addp,.primary,.plist button,.more{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:8px 14px;cursor:pointer;white-space:nowrap}
-.primary{background:var(--amber);border-color:var(--amber);color:#1b1b1b;font-weight:600}
-.primary:disabled,.plist button:disabled{opacity:.5;cursor:default}
-.empty .primary{margin-top:16px}
-.manage{display:flex;flex-direction:column;gap:12px;max-width:560px}
-.manage h2,.manage h3{margin:0}
-.manage input[type=file],.manage input[type=text],.manage input[type=url]{width:100%}
-.plist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.plist li{display:grid;gap:6px;border:1px solid var(--line);border-radius:6px;padding:8px 12px}
-.plist .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.plist small{color:var(--mute)}
-.more{display:block;margin:20px auto 0}
-.diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--mute);margin:6px 0 0;padding:8px;border-radius:6px;background:#0f1c20}
-@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+.detail h3{font:800 1.4rem system-ui;margin:14px 16px 2px}.detail small{color:var(--mute);font:400 1rem system-ui}
+.detail p{color:var(--mute);max-width:70ch;margin:4px 16px 0}
+.primary,.more{border:0;border-radius:4px;background:var(--red);color:#fff;font-weight:700;padding:10px 22px;cursor:pointer}
+.more{display:block;margin:24px auto 0;background:#2a2a2a}
+.diag{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;color:var(--mute);margin:6px 16px 0;padding:8px;border-radius:6px;background:#000}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none!important}}
 </style>
 </head>
 <body>
 <header>
   <h1>Reel Room</h1>
-  <div class="tools">
-    <input id="search" type="search" placeholder="Search titles" aria-label="Search titles" hidden>
-    <select id="psel" aria-label="Provider" hidden></select>
-    <button class="addp" id="addp">+ Provider</button>
-  </div>
+  <input id="search" type="search" placeholder="Search movies &amp; series" aria-label="Search" hidden>
 </header>
 <main>
   <nav id="nav"></nav>
@@ -71,9 +61,8 @@ button.addp,.primary,.plist button,.more{border:1px solid var(--line);border-rad
   <button class="more" id="more" hidden>Load more</button>
 </main>
 <section class="empty" id="empty" hidden>
-  <h2>No provider connected</h2>
-  <p>Upload a provider <code>.zip</code> to get started. Native (<code>index.js</code>) and Vega-style providers both work.</p>
-  <button class="primary" id="empty-add">Upload provider zip</button>
+  <h2>No sources available</h2>
+  <p>Add provider files to the <code>providers/</code> folder of the site.</p>
 </section>
 <div id="modal"></div>
 <div id="detail"></div>
@@ -630,9 +619,9 @@ const cur = () => (S.pid === AUTO ? autoProv() : S.providers.find((p) => p.id ==
 // Auto: runs every TMDB-style provider in parallel for one title and merges the streams
 function autoProv() {
   const list = S.providers.filter((x) => x.tmdb);
-  if (list.length < 2) return null;
+  if (list.length < 1) return null;
   const first = list[0];
-  const tag = (pv, x) => ({ ...x, server: `${pv.name}${x.server && x.server !== pv.name ? " · " + x.server : ""}${x.quality ? " " + x.quality : ""}`, headers: { ...(pv.rec.streamHeaders || {}), ...(x.headers || {}) } });
+  const tag = (pv, x) => ({ ...x, provider: pv.name, server: `${pv.name}${x.server && x.server !== pv.name ? " · " + x.server : ""}${x.quality ? " " + x.quality : ""}`, headers: { ...(pv.rec.streamHeaders || {}), ...(x.headers || {}) } });
   return {
     id: AUTO, name: "Auto (all providers)", rec: {},
     getCatalog: () => first.getCatalog(), getPosts: (a) => first.getPosts(a), getSearchPosts: (a) => first.getSearchPosts(a),
@@ -684,14 +673,7 @@ function setNote(text, isErr) {
 
 function renderShell() {
   const none = S.providers.length === 0;
-  $("#empty").hidden = !none;
-  $("main").hidden = none;
-  $("#search").hidden = none;
-  const sel = $("#psel");
-  sel.hidden = S.providers.length < 2;
-  const auto = autoProv();
-  sel.replaceChildren(...(auto ? [el("option", { value: AUTO, selected: S.pid === AUTO }, "⚡ Auto (all providers)")] : []),
-    ...S.providers.map((p) => el("option", { value: p.id, selected: p.id === S.pid }, p.name)));
+  $("#empty").hidden = !none; $("main").hidden = none; $("#search").hidden = none;
 }
 
 function renderNav() {
@@ -825,11 +807,23 @@ function mountPlayer(box, s, poster, onError, extra) {
   return () => { dead = true; hls?.destroy(); v.onerror = null; v.pause(); v.removeAttribute("src"); v.load(); };
 }
 
+/* ===================== stream info (language / quality / server) ===================== */
+const LANGS = [["Hindi", /hindi|\bhin\b/i], ["English", /english|\beng\b/i], ["Tamil", /tamil/i], ["Telugu", /telugu/i], ["Malayalam", /malayalam/i], ["Kannada", /kannada/i], ["Bengali", /bengali/i], ["Punjabi", /punjabi/i], ["Spanish", /spanish|latino/i], ["French", /french/i], ["Dual Audio", /dual/i], ["Multi Audio", /multi/i]];
+const qRank = (q) => (q === "4K" ? 2160 : parseInt(q) || 0);
+function streamInfo(x) {
+  const t = [x.server, x.title, x.name, x.quality, x.language, x.lang].filter(Boolean).join(" ");
+  const langs = LANGS.filter(([, r]) => r.test(t)).map(([n]) => n);
+  const m = t.match(/(2160|1440|1080|720|576|480|360|240)\s*p?/i);
+  return { langs: langs.length ? langs : ["Original"], q: /4k|uhd/i.test(t) || (m && m[1] === "2160") ? "4K" : m ? m[1] + "p" : "SD", srv: x.provider || x.server || "Server" };
+}
+const selectBox = (label, opts, val, on) => el("label", { class: "sel" }, label,
+  el("select", { onchange: (e) => on(e.target.value) }, opts.map((o) => el("option", { value: o, selected: o === val }, o))));
+
 /* ===================== detail view ===================== */
 function openDetail(post) {
   const p = cur();
   const host = $("#detail");
-  let meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false;
+  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false;
 
   const close = () => { gone = true; stopPlayer?.(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
@@ -846,7 +840,8 @@ function openDetail(post) {
     videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
     withTimeout(p.getStream({ link, type })).then((s) => {
       if (gone) return;
-      streams = Array.isArray(s) ? s.filter((x) => x && x.link) : [];
+      streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => qRank(b._i.q) - qRank(a._i.q));
+      f = { lang: "All", q: "All", srv: "All" };
       if (!streams.length) { err = "No playable stream found."; errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
     }).catch((e) => { if (!gone) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
@@ -859,22 +854,34 @@ function openDetail(post) {
     }).catch((e) => { if (gone) return; eps = null; err = e.message; draw(); });
   };
 
+  const vis = () => (streams || []).filter((x) => (f.lang === "All" || x._i.langs.includes(f.lang)) && (f.q === "All" || x._i.q === f.q) && (f.srv === "All" || x._i.srv === f.srv));
   function draw() {
     if (gone) return;
-    const s = streams?.[idx];
+    const s = vis()[idx];
     stopPlayer?.(); stopPlayer = null;
-    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => { err = m; errDetail = d || ""; drawBody(); }, p.rec.streamHeaders);
+    if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
+      if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
+      err = m + " Try another server or quality."; errDetail = d || ""; drawBody();
+    }, p.rec.streamHeaders);
     else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }
   function drawBody() {
-    const s = streams?.[idx];
+    const s = vis()[idx];
     const nodes = [];
+    if (streams?.length) {
+      const uniq = (k) => ["All", ...new Set(streams.flatMap((x) => (k === "langs" ? x._i.langs : [x._i[k]])))];
+      const set = (k) => (v) => { f[k] = v; idx = 0; err = ""; errDetail = ""; draw(); };
+      nodes.push(el("div", { class: "bar" },
+        selectBox("Language", uniq("langs"), f.lang, set("lang")),
+        selectBox("Quality", uniq("q").sort((a, b) => (a === "All" ? -1 : b === "All" ? 1 : qRank(b) - qRank(a))), f.q, set("q")),
+        selectBox("Server", uniq("srv"), f.srv, set("srv"))));
+    }
     if (s && err) nodes.push(el("p", { class: "note err" }, err));
     if (errDetail) nodes.push(el("pre", { class: "diag" }, errDetail));
-    if (streams?.length > 1)
-      nodes.push(el("div", { class: "alts" }, streams.map((x, n) =>
-        el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; errDetail = ""; idx = n; draw(); } }, x.server || x.quality || `Source ${n + 1}`))));
+    if (vis().length > 1)
+      nodes.push(el("div", { class: "alts" }, vis().map((x, n) =>
+        el("button", { class: n === idx ? "on" : "", onclick: () => { err = ""; errDetail = ""; idx = n; draw(); } }, `${x._i.srv} · ${x._i.q}`))));
     if (meta?.linkList?.length) {
       if (eps) nodes.push(el("div", { class: "alts" }, el("b", {}, eps.title || "Episodes"),
         eps.list === null && el("span", { class: "note" }, "Loading episodes…"),
@@ -997,21 +1004,30 @@ function openManager() {
 }
 
 /* ===================== boot ===================== */
-$("#addp").addEventListener("click", openManager);
-$("#empty-add").addEventListener("click", openManager);
 $("#more").addEventListener("click", () => fetchPosts(false));
-$("#psel").addEventListener("change", (e) => selectProvider(e.target.value));
-$("#search").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { S.query = e.target.value.trim(); renderNav(); fetchPosts(true); }
-});
-$("#search").addEventListener("input", (e) => {
-  if (!e.target.value && S.query) { S.query = ""; renderNav(); fetchPosts(true); }
-});
+$("#search").addEventListener("keydown", (e) => { if (e.key === "Enter") { S.query = e.target.value.trim(); renderNav(); fetchPosts(true); } });
+$("#search").addEventListener("input", (e) => { if (!e.target.value && S.query) { S.query = ""; renderNav(); fetchPosts(true); } });
 
+// Providers ship with the site: every file in /providers is loaded automatically.
+async function loadRepoProviders() {
+  let names = [];
+  try { names = (await (await fetch("/api/providers")).json()).files || []; } catch { /* fall back */ }
+  if (!names.length) try { names = await (await fetch("providers/index.json")).json(); } catch { /* none */ }
+  const files = new Map();
+  await Promise.all(names.map(async (n) => {
+    try { const r = await fetch("providers/" + n); if (r.ok) files.set("providers/" + n, await r.text()); } catch { /* skip */ }
+  }));
+  for (const f of findProviders(files)) {
+    const folder = f.entry ? f.entry.replace(/\.(c|m)?js$/i, "") : f.dir.split("/").pop() || "provider";
+    try { S.providers.push(await loadProvider({ id: folder, folder, files: f.files, baseUrl: "", entry: f.entry })); }
+    catch (e) { console.warn(`[skip] ${folder}: ${e.message}`); }
+  }
+}
 (async () => {
-  await initProviders();
-  const saved = store.get("pid");
-  await selectProvider(saved && (saved === AUTO ? autoProv() : S.providers.some((x) => x.id === saved)) ? saved : autoProv() ? AUTO : S.providers[0]?.id || "");
+  setNote("Loading…");
+  await loadRepoProviders();
+  setNote("");
+  await selectProvider(AUTO);
 })();
 </script>
 </body>

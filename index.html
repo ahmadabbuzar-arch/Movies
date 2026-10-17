@@ -756,15 +756,17 @@ function autoProv() {
         const seen = new Set();
         resolve(found.filter((x) => !seen.has(x.link) && seen.add(x.link)).sort((x, y) => (x.type === "embed") - (y.type === "embed")));
       };
-      hard = setTimeout(finish, 55000);
+      hard = setTimeout(finish, 40000); let checked = 0;
       const queue = [...list]; let workers = Math.min(8, list.length); // 8 providers at a time
       const worker = async () => {
         for (let pv; !done && (pv = queue.shift()); ) {
+          if ((pv._fails || 0) >= 2) { a.onProgress?.(++checked, list.length); continue; } // dead provider: skip after 2 errors
           try {
-            const r = await withTimeout(autoStream(pv, a), 25000);
+            const r = await withTimeout(autoStream(pv, a), 15000);
             plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
             if (r.length) { found.push(...r.map((x) => tag(pv, x))); if (!grace) grace = setTimeout(finish, 2500); }
-          } catch (e) { plog(`[auto] ${pv.name}: ${e.message}`); }
+          } catch (e) { pv._fails = (pv._fails || 0) + 1; plog(`[auto] ${pv.name}: ${e.message}`); }
+          a.onProgress?.(++checked, list.length);
         }
         if (--workers === 0) finish();
       };
@@ -1107,7 +1109,7 @@ function openDetail(post) {
   const play = (link, type) => {
     streams = null; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
     videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    withTimeout(p.getStream({ link, type }), 60000).then((s) => {
+    withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
       if (gone) return;
       streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => prefRank(a) - prefRank(b));
       f = { lang: "All", q: "All", srv: "All" };

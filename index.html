@@ -180,6 +180,32 @@ h1{letter-spacing:.08em;text-shadow:0 0 26px #e5091477}
 .moresec h4{display:flex;align-items:center;gap:10px}
 .moresec h4::before{content:"";width:4px;height:1em;border-radius:2px;background:var(--red)}
 .mgrid .card span{color:#bdbdbd}.msent{height:1px}
+
+/* ===== mobile header ===== */
+h1{white-space:nowrap}
+@media(max-width:700px){
+ #top{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"logo search" "menu menu";align-items:center;gap:2px 12px;padding:max(10px,env(safe-area-inset-top)) 14px 6px}
+ .l{display:contents}
+ h1{grid-area:logo;font-size:1.15rem}
+ #search{grid-area:search;width:100%;min-width:0}#search:focus{width:100%}
+ #menu{grid-area:menu;gap:20px}
+ main{padding-top:112px}.skel{padding-top:112px}
+}
+
+/* phones: drop blur layers that cause scroll glitches */
+.pb{-webkit-tap-highlight-color:transparent}
+@media(max-width:700px),(pointer:coarse){
+ .overlay{backdrop-filter:none;-webkit-backdrop-filter:none;background:#000e}
+ .detail::before{display:none}.detail{animation:none}
+ .close,.pb.big,.menu,.chip,.alts button,.rt{backdrop-filter:none;-webkit-backdrop-filter:none}
+ .close{background:#181818}.pb.big{background:#000a}.menu{background:#181818}.alts button{background:#262626}
+}
+
+/* search results use the same look as the rows */
+.qt{display:flex;align-items:center;gap:10px;margin:0;padding:0 4vw 12px;font:600 clamp(16px,2vw,24px)/1.3 Arial,sans-serif;color:#e5e5e5}
+.qt::before{content:"";width:4px;height:1em;border-radius:2px;background:var(--red)}
+.grid{gap:14px 10px}
+.grid .card{animation:up .4s var(--ease) both}
 </style>
 </head>
 <body>
@@ -194,6 +220,7 @@ h1{letter-spacing:.08em;text-shadow:0 0 26px #e5091477}
   <p id="note" class="note"></p>
   <div id="home"></div>
   <div id="sent" aria-hidden="true"></div>
+  <h2 id="qtitle" class="qt" hidden></h2>
   <div class="grid" id="grid" hidden></div>
   <button class="more" id="more" hidden>Load more</button>
 </main>
@@ -635,11 +662,24 @@ async function loadProvider(rec) {
     const CIN = "https://v3-cinemeta.strem.io", metaCache = new Map();
     const cj = async (ctx, path) => { const r = await ctx.fetch(CIN + path); if (!r.ok) throw new Error(`Catalog ${r.status}`); return r.json(); };
     const toPost = (m) => ({ title: m.name, link: `${m.type}:${m.id}`, image: m.poster || "", rating: m.imdbRating || "", backdrop: m.background || "", desc: m.description || "", year: (m.releaseInfo || "").toString().slice(0, 4) });
-    raw.getCatalog = async () => [
-      { title: "Popular Movies", filter: "movie/top" }, { title: "Popular Series", filter: "series/top" },
-      { title: "Top Rated Movies", filter: "movie/imdbRating" }, { title: "Top Rated Series", filter: "series/imdbRating" },
-    ];
+    raw.getCatalog = async () => {
+      const hi = await hasTmdb();
+      return [
+        { title: "Popular Movies", filter: "movie/top" },
+        { title: "New Releases", filter: "movie/year/genre=" + new Date().getFullYear() },
+        ...(hi ? [{ title: "Latest Hindi Movies", filter: "movie/tmdb-hi" }] : []),
+        { title: "Popular Series", filter: "series/top" },
+        ...(hi ? [{ title: "Latest Hindi Series", filter: "series/tmdb-hi" }] : []),
+        { title: "Top Rated Movies", filter: "movie/imdbRating" }, { title: "Top Rated Series", filter: "series/imdbRating" },
+      ];
+    };
     raw.getPosts = async ({ filter, page }, ctx) => {
+      if (/\/tmdb-hi$/.test(filter || "")) { // fresh Hindi titles (TMDB), refreshed hourly
+        const kind = filter.startsWith("series") ? "tv" : "movie";
+        const range = kind === "movie" ? { "primary_release_date.gte": day(150), "primary_release_date.lte": day(0) } : { "first_air_date.gte": day(400), "first_air_date.lte": day(0) };
+        const j = await tj({ path: `discover/${kind}`, with_original_language: "hi", sort_by: "popularity.desc", page: page || 1, ...range });
+        return (j.results || []).filter((t) => t.poster_path).map((t) => tPost(t, kind));
+      }
       const skip = ((page || 1) - 1) * 100;
       return ((await cj(ctx, `/catalog/${filter || "movie/top"}${skip ? `/skip=${skip}` : ""}.json`)).metas || []).map(toPost);
     };
@@ -649,6 +689,16 @@ async function loadProvider(rec) {
       const [m, t] = await Promise.all(["movie", "series"].map((k) => cj(ctx, `/catalog/${k}/top/search=${q}.json`).catch(() => ({ metas: [] }))));
       return [...(m.metas || []), ...(t.metas || [])].map(toPost);
     };
+    const tj = async (qs) => { const r = await fetch("/api/tmdb?" + new URLSearchParams(qs)); if (!r.ok) throw new Error("tmdb " + r.status); return r.json(); };
+    let tmdbOk = null;
+    const hasTmdb = () => (tmdbOk ??= tj({ check: 1 }).then((j) => j.configured !== false).catch(() => false));
+    const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+    const tPost = (t, kind) => ({ title: t.title || t.name, link: `tmdb:${kind}:${t.id}`, image: t.poster_path ? "https://image.tmdb.org/t/p/w342" + t.poster_path : "", rating: t.vote_average ? t.vote_average.toFixed(1) : "", year: String(t.release_date || t.first_air_date || "").slice(0, 4) });
+    const resolve = async (link) => { // tmdb:movie:123 -> movie:tt...
+      const m = /^tmdb:(movie|tv):(\d+)$/.exec(link || ""); if (!m) return link;
+      const j = await tj({ path: `${m[1]}/${m[2]}/external_ids` }); if (!j.imdb_id) throw new Error("No IMDb id for this title");
+      return `${m[1] === "tv" ? "series" : "movie"}:${j.imdb_id}`;
+    };
     const getCin = async (ctx, link) => {
       if (metaCache.has(link)) return metaCache.get(link);
       const [type, id] = link.split(":");
@@ -656,6 +706,7 @@ async function loadProvider(rec) {
       metaCache.set(link, m); return m;
     };
     raw.getMeta = async ({ link }, ctx) => {
+      link = await resolve(link);
       const m = await getCin(ctx, link), type = link.split(":")[0];
       const tmdb = m.moviedb_id;
       const out = { tmdb, background: m.background || "", title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
@@ -683,6 +734,7 @@ async function loadProvider(rec) {
       return (Array.isArray(rr) ? rr : []).filter((x) => x && /^https?:\/\//i.test(x.url || "") && (guessType(x.url) || looksEmbed(x.url))).map((x) => ({ ...x, type: guessType(x.url) || "embed" }));
     };
     raw.getMore = async ({ link, page }, ctx) => { // page n -> next genre / next 100 titles
+      link = await resolve(link);
       const [type, id] = link.split(":"), m = await getCin(ctx, link), gs = m.genres || [], n = (page || 1) - 1;
       const g = gs.length ? gs[n % gs.length] : "", skip = Math.floor(n / Math.max(gs.length, 1)) * 100;
       const r = await cj(ctx, `/catalog/${type}/top${g ? `/genre=${encodeURIComponent(g)}` : ""}${skip ? `/skip=${skip}` : ""}.json`);
@@ -903,8 +955,7 @@ function renderGrid(append) {
   if (!append) grid.replaceChildren();
   const start = append ? grid.children.length : 0;
   for (const p of S.posts.slice(start)) {
-    grid.append(el("button", { class: "card", onclick: () => openDetail(p) },
-      el("img", { src: p.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, p.title)));
+    grid.append(card(p)); // same card as the home rows (poster frame, rating, hover)
   }
   $("#more").hidden = !S.hasMore;
 }
@@ -1038,9 +1089,14 @@ function playerShell(v, title) {
   wrap.addEventListener("pointermove", () => show());
   wrap.addEventListener("click", (e) => {
     if (!menu.hidden) { menu.hidden = true; return; }
-    const r = wrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width; taps++; clearTimeout(tapT);
+    const r = wrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; taps++; clearTimeout(tapT);
     tapT = setTimeout(() => {
-      if (taps === 1) { if (touch) (wrap.classList.contains("show") && !v.paused ? wrap.classList.remove("show") : show()); else toggle(); }
+      if (taps === 1) {
+        if (!touch) toggle();
+        else if (!wrap.classList.contains("show")) show();
+        else if (x > 0.3 && x < 0.7 && y > 0.25 && y < 0.75) { toggle(); show(); }
+        else wrap.classList.remove("show");
+      }
       else if (touch) { if (x < 0.35) { seek(-10); say("−10s"); } else if (x > 0.65) { seek(10); say("+10s"); } else toggle(); }
       else fs();
       taps = 0;
@@ -1164,6 +1220,10 @@ function openDetail(post) {
 
   let more = null; // must exist before the first draw()
   let mobs = null, morePage = 1, moreBusy = false, moreDone = false;
+  const mgrid = el("div", { class: "mgrid" }), msent = el("div", { class: "msent" });
+  const moreSec = el("section", { class: "moresec", hidden: true }, el("h4", {}, "More Like This"), mgrid, msent);
+  const mcard = (x) => el("button", { class: "card", onclick: () => { close(); openDetail(x); } },
+    el("img", { src: x.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, x.title));
   const close = () => { gone = true; stopPlayer?.(); mobs?.disconnect(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
   window.addEventListener("keydown", esc);
@@ -1230,13 +1290,8 @@ function openDetail(post) {
     }
     nodes.push(el("h3", {}, meta?.title || post.title, meta?.year && el("small", {}, ` ${meta.year}`)));
     nodes.push(el("p", {}, meta?.synopsis || (meta ? "No synopsis available." : "")));
-    if (more?.length) nodes.push(el("section", { class: "moresec" }, el("h4", {}, "More Like This"),
-      el("div", { class: "mgrid" }, more.map((x) => el("button", { class: "card", onclick: () => { close(); openDetail(x); } },
-        el("img", { src: x.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, x.title)))), el("div", { class: "msent" })));
+    nodes.push(moreSec);
     body.replaceChildren(...nodes);
-    mobs?.disconnect();
-    const sn = body.querySelector(".msent");
-    if (sn && !moreDone) { mobs = new IntersectionObserver((e) => { if (e[0].isIntersecting) loadMore(); }, { rootMargin: "600px" }); mobs.observe(sn); }
   }
 
   draw();
@@ -1248,8 +1303,12 @@ function openDetail(post) {
       if (gone) return;
       morePage++; if (!l?.length || morePage > 12) moreDone = true;
       const have = new Set((more || []).map((x) => x.link)), fresh = (l || []).filter((x) => !have.has(x.link) && x.link !== post.link);
-      more = (more || []).concat(fresh); drawBody();
-      moreBusy = false; if (fresh.length < 6 && !moreDone) loadMore();
+      more = (more || []).concat(fresh);
+      for (const x of fresh) mgrid.append(mcard(x));
+      if (fresh.length) moreSec.hidden = false;
+      if (!mobs) { mobs = new IntersectionObserver((e) => { if (e[0].isIntersecting) loadMore(); }, { rootMargin: "600px" }); mobs.observe(msent); }
+      moreBusy = false;
+      if (!moreDone && (fresh.length < 6 || msent.getBoundingClientRect().top < innerHeight + 800)) loadMore();
     } catch { moreDone = true; }
     moreBusy = false;
   };
@@ -1420,6 +1479,7 @@ async function heroFrom(items) {
 }
 function doSearch(q) {
   S.query = q;
+  $("#qtitle").textContent = q ? `Results for \u201C${q}\u201D` : ""; $("#qtitle").hidden = !q;
   $("#home").hidden = !!q; $("#hero").style.display = q ? "none" : ""; $("#grid").hidden = !q;
   if (q) fetchPosts(true); else { S.posts = []; renderGrid(false); $("#more").hidden = true; setNote(""); }
 }

@@ -218,7 +218,6 @@ h1{white-space:nowrap}
  .vbox{position:relative;top:auto;flex:none}
  .dscroll{display:block;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 }
-#addprov{margin-left:auto;background:#ffffff14;border:1px solid #ffffff26;border-radius:999px;padding:7px 14px;cursor:pointer;white-space:nowrap}#addprov:hover{background:#ffffff26}
 .manage{padding:20px 20px 24px}.manage h2{margin:0 0 12px}.manage h3{margin:20px 0 6px}.manage input[type=url],.manage input[type=text]{width:100%;margin-top:6px;background:#ffffff10;border:1px solid #ffffff26;border-radius:6px;padding:8px 10px}
 .manage .plist{list-style:none;padding:0;margin:0}.manage .plist li{border:1px solid #ffffff1f;border-radius:8px;padding:10px;margin-bottom:8px}
 .manage .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0;overflow:visible}.manage .note{padding:6px 0}.manage .ok{color:#7ddc8a}
@@ -229,7 +228,6 @@ h1{white-space:nowrap}
 <header id="top">
   <div class="l"><h1>Reel Room</h1>
     <nav id="menu"><button data-v="all" class="on">Home</button><button data-v="movie">Movies</button><button data-v="series">Series</button></nav></div>
-  <button id="addprov" class="addp" type="button">+ Provider</button>
   <input id="search" type="search" placeholder="Titles, people, genres" aria-label="Search" hidden>
 </header>
 <section id="hero" hidden></section>
@@ -244,7 +242,7 @@ h1{white-space:nowrap}
 </main>
 <section class="empty" id="empty" hidden>
   <h2>No sources available</h2>
-  <p>Tap <b>+ Provider</b> (top right) to upload a provider zip, or add files to the <code>providers/</code> folder of the site.</p>
+  <p>Add provider files to the <code>providers/</code> folder of the site.</p>
 </section>
 <div id="modal"></div>
 <div id="detail"></div>
@@ -1570,18 +1568,9 @@ async function loadRepoProviders() {
   }
   S.report = `files read: ${files.size}\nlisted: ${names.length}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
 }
-async function loadSavedProviders() { // providers installed through "+ Provider" (kept in this browser)
-  let recs = []; try { recs = await idb.all(); } catch { return; }
-  for (const r of recs) {
-    if (S.providers.some((x) => x.id === r.id)) continue;
-    try { S.providers.push(await loadProvider(r)); } catch (e) { S.failed.push({ id: r.id, error: e.message }); }
-  }
-}
-$("#addprov").addEventListener("click", openManager);
 (async () => {
   setNote("Loading…");
   await loadRepoProviders();
-  await loadSavedProviders();
   setNote("");
   if (location.hash === "#debug") $("#modal").replaceChildren(el("div", { class: "overlay", onclick: (e) => e.target.classList.contains("overlay") && e.target.remove() }, el("pre", { class: "diag" }, S.report || "")));
   S.pid = AUTO; renderShell(); await renderHome();

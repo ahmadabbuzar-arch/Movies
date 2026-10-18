@@ -5,14 +5,14 @@ Files: `index.html` (the whole site) · `api/proxy.js` (Vercel function) · `ver
 ## Deploy
 1. Put these files in a GitHub repo (keep the `api/` folder).
 2. vercel.com → Add New → Project → import the repo → Framework "Other" → Deploy.
-3. Open the site → **+ Provider** → upload a provider `.zip`.
+3. To add providers, put their files (or a `.zip`) in the `providers/` folder of the repo and push; they load automatically.
 
 ## How it works
-- Providers are stored in your browser (IndexedDB) and run in the browser. Native (`index.js`) and Vega-style providers work.
+- Providers in the `providers/` folder run in the browser. Native (`index.js`) and Vega-style providers work.
 - Requests try the site directly first; if the site blocks browsers (CORS) or needs headers like Referer, they go through `/api/proxy`.
 - HLS (`.m3u8`) plays with hls.js; tries direct, falls back to the proxy.
 
-## Supported provider formats (zip / .js / .json upload via **+ Provider**)
+## Supported provider formats (put them in the `providers/` folder: .js, .json or .zip)
 - Native `index.js` / `main.js` / `provider.js`, Nuvio-style `getStreams(tmdbId, type, season, episode)`, Vega-style split files (`posts.js`, `meta.js`, `episodes.js`, `stream.js`…), and single `.js` files.
 - Embed-template `.json`: `{"name":"X","movie":"https://host/embed/movie/{tmdb}","tv":"https://host/embed/tv/{tmdb}/{season}/{episode}"}` (or `{"url": "..."}`, or a list). Plays in an iframe; `{imdb}` is not supported.
 - Zips inside zips, and one zip holding many providers (mixed formats are fine).

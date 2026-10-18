@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<title>Reel Room</title>
+<title>PopcornNet</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#141414">
 <style>
 :root{--bg:#141414;--panel:#1f1f1f;--elev:#2d2d2d;--ink:#fff;--ink2:#bcbcbc;--mute:#808080;--red:#e50914;--redd:#831010;--line:#8c8c8c}
 *{box-sizing:border-box}
@@ -222,11 +225,12 @@ h1{white-space:nowrap}
 .manage .plist{list-style:none;padding:0;margin:0}.manage .plist li{border:1px solid #ffffff1f;border-radius:8px;padding:10px;margin-bottom:8px}
 .manage .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0;overflow:visible}.manage .note{padding:6px 0}.manage .ok{color:#7ddc8a}
 .manage button:not(.close){background:#ffffff14;border:1px solid #ffffff26;border-radius:6px;padding:7px 14px;cursor:pointer}.manage button.primary{background:var(--red);border-color:var(--red);margin-top:8px}.manage button:disabled{opacity:.5;cursor:default}
+h1{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:.01em;color:#fff;text-shadow:none}h1 img{height:1.7em;width:auto}h1 b{color:var(--red);font-weight:inherit}
 </style>
 </head>
 <body>
 <header id="top">
-  <div class="l"><h1>Reel Room</h1>
+  <div class="l"><h1><img src="/logo.png" alt="" width="36" height="36">Popcorn<b>Net</b></h1>
     <nav id="menu"><button data-v="all" class="on">Home</button><button data-v="movie">Movies</button><button data-v="series">Series</button></nav></div>
   <input id="search" type="search" placeholder="Titles, people, genres" aria-label="Search" hidden>
 </header>

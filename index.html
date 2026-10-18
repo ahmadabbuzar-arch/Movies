@@ -756,7 +756,8 @@ async function loadProvider(rec) {
       link = await resolve(link);
       const m = await getCin(ctx, link), type = link.split(":")[0];
       const tmdb = m.moviedb_id;
-      const out = { tmdb, background: m.background || "", title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
+      const rt = (x) => { x = String(x || ""); const h = +(x.match(/(\d+)\s*h/i) || [])[1] || 0, mi = +(x.match(/(\d+)\s*m/i) || [])[1] || 0; return h || mi ? h * 60 + mi : parseInt(x, 10) || 0; };
+      const out = { tmdb, runtime: rt(m.runtime), background: m.background || "", title: m.name || "", synopsis: m.description || "", image: m.poster || "", year: (m.releaseInfo || m.year || "").toString().slice(0, 4), type: type === "series" ? "series" : "movie" };
       if (!tmdb) throw new Error("This title has no TMDB id, so this provider cannot play it.");
       if (type === "movie") out.linkList = [{ title: "Play", directLinks: [{ title: "Play", link: String(tmdb), type: "movie" }] }];
       else {
@@ -1167,7 +1168,7 @@ function playerShell(v, title) {
   return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
 }
 
-function mountPlayer(box, s, poster, onError, extra) {
+function mountPlayer(box, s, poster, onError, extra, check) {
   if (s.type === "embed" || s.type === "iframe" || s.type === "page") {
     const f = el("iframe", { src: s.link, allowfullscreen: true, allow: "autoplay; fullscreen; picture-in-picture", referrerpolicy: "no-referrer", style: "width:100%;aspect-ratio:16/9;border:0;background:#000" });
     box.replaceChildren(f);
@@ -1237,6 +1238,14 @@ function mountPlayer(box, s, poster, onError, extra) {
       else onError("This browser cannot play HLS streams.");
     }).catch((e) => { log.push("hls.js: " + e.message); if (canNative) native(src); else onError(e.message); });
   }
+  // wrong-video guard: a film whose real length is far from the expected runtime is some other video
+  let lenDone = false;
+  const lenCheck = () => {
+    if (dead || lenDone || !check || !isFinite(v.duration) || v.duration < 1) return;
+    lenDone = true; const m = v.duration / 60;
+    if (m < check.min * 0.78 || m > check.min * 1.35) { log.push(`length ${Math.round(m)} min, expected ~${check.min} min`); check.wrong(m); }
+  };
+  v.addEventListener("loadedmetadata", lenCheck); v.addEventListener("durationchange", lenCheck);
   v.addEventListener("loadeddata", () => { started = true; clearTimeout(wd); });
   v.addEventListener("playing", () => {
     started = true; clearTimeout(wd);
@@ -1292,7 +1301,8 @@ function openDetail(post) {
     withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
       if (gone) return;
       streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => prefRank(a) - prefRank(b));
-      f = { lang: "All", q: "All", srv: "All" };
+      const savedSrv = store.get("srv", "All"); // the server you picked last time stays selected while it exists
+      f = { lang: "All", q: "All", srv: streams.some((x) => x._i.srv === savedSrv) ? savedSrv : "All" };
       if (!streams.length) { err = "No playable stream found."; errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
     }).catch((e) => { if (!gone) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
@@ -1312,14 +1322,15 @@ function openDetail(post) {
     stopPlayer?.(); stopPlayer = null;
     playerMenu = () => {
       const uq = (fn) => [...new Set((streams || []).flatMap(fn))];
-      const sec = (title, key, vals, all) => ({ title, items: [["All", all], ...vals.map((x) => [x, x])].map(([val, label]) => ({ label, active: f[key] === val, pick: () => { f[key] = val; idx = 0; err = ""; errDetail = ""; draw(); } })) });
+      const sec = (title, key, vals, all) => ({ title, items: [["All", all], ...vals.map((x) => [x, x])].map(([val, label]) => ({ label, active: f[key] === val, pick: () => { f[key] = val; if (key === "srv") store.set("srv", val); idx = 0; err = ""; errDetail = ""; draw(); } })) });
       return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any")];
     };
     videoBox.dataset.title = (meta && meta.title) || post.title || "";
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
       if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
       err = m + " Try another server or quality."; errDetail = d || ""; drawBody();
-    }, p.rec.streamHeaders);
+    }, p.rec.streamHeaders, meta && meta.type === "movie" && meta.runtime > 30
+      ? { min: meta.runtime, wrong: () => { if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); } } } : null);
     else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }

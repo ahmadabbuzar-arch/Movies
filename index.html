@@ -888,8 +888,11 @@ const TITLES = new Map();
 async function viaSearch(pv, i) { // catalog-style provider: search by title, then walk meta -> episodes -> stream
   const n = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(), q = n(i.title);
   const posts = await pv.getSearchPosts({ query: i.title, page: 1 });
-  const hit = posts.find((x) => n(x.title) === q) || posts.find((x) => n(x.title).startsWith(q)) || posts.find((x) => n(x.title).includes(q));
-  if (!hit) { plog(`[auto] ${pv.name}: no title match`); return []; }
+  // exact title only (no "starts with"/"contains" guesses), and the release year must agree when both sides know it
+  const yr = (x) => parseInt(String(x.year || (String(x.title || "").match(/\((\d{4})\)/) || [])[1] || ""), 10) || 0;
+  const okYear = (x) => !i.year || !yr(x) || Math.abs(yr(x) - parseInt(i.year, 10)) <= 1;
+  const hit = posts.find((x) => n(String(x.title).replace(/\(\d{4}\)/, "")) === q && okYear(x));
+  if (!hit) { plog(`[auto] ${pv.name}: no exact title/year match`); return []; }
   const m = await pv.getMeta({ link: hit.link }), groups = m.linkList || [], links = [];
   if (i.movie) { for (const g of groups) for (const d of g.directLinks || []) links.push({ link: d.link, type: d.type || "movie" }); if (!groups.length) links.push({ link: hit.link, type: "movie" }); }
   else {

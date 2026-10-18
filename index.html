@@ -209,6 +209,15 @@ h1{white-space:nowrap}
 
 /* cards must never be wider than their grid cell */
 .card{min-width:0;max-width:100%}.ph{width:100%}.card img{max-width:100%}
+
+/* detail view: video stays on top, only the info/"More Like This" area scrolls (more reliable than sticky on Android) */
+.dscroll{display:contents}
+@media(max-width:700px){
+ .overlay{overflow:hidden;grid-template-rows:minmax(0,1fr)}
+ .detail{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+ .vbox{position:relative;top:auto;flex:none}
+ .dscroll{display:block;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+}
 </style>
 </head>
 <body>
@@ -1226,21 +1235,22 @@ function openDetail(post) {
   const mgrid = el("div", { class: "mgrid" }), msent = el("div", { class: "msent" });
   const moreSec = el("section", { class: "moresec", hidden: true }, el("h4", {}, "More Like This"), mgrid, msent);
   const mcard = (x) => el("button", { class: "card", onclick: () => { close(); openDetail(x); } },
-    el("img", { src: x.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), el("span", {}, x.title));
+    sharp(el("img", { alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), x.image), el("span", {}, x.title));
   const close = () => { gone = true; stopPlayer?.(); mobs?.disconnect(); host.replaceChildren(); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
   window.addEventListener("keydown", esc);
 
   const videoBox = el("div", { class: "vbox" });
   const body = el("div");
+  const dscroll = el("div", { class: "dscroll" }, body);
   const article = el("article", { class: "detail", onclick: (e) => e.stopPropagation() },
-    el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), videoBox, body);
+    el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), videoBox, dscroll);
   article.style.setProperty("--bgi", `url("${String(post.image || "").replace(/"/g, "%22")}")`);
   host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
 
   const play = (link, type) => {
     streams = null; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
-    videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!matchMedia("(max-width:700px)").matches) videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" }); else dscroll.scrollTop = 0;
     withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
       if (gone) return;
       streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => prefRank(a) - prefRank(b));
@@ -1309,7 +1319,7 @@ function openDetail(post) {
       more = (more || []).concat(fresh);
       for (const x of fresh) mgrid.append(mcard(x));
       if (fresh.length) moreSec.hidden = false;
-      if (!mobs) { mobs = new IntersectionObserver((e) => { if (e[0].isIntersecting) loadMore(); }, { rootMargin: "600px" }); mobs.observe(msent); }
+      if (!mobs) { mobs = new IntersectionObserver((e) => { if (e[0].isIntersecting) loadMore(); }, { root: matchMedia("(max-width:700px)").matches ? dscroll : null, rootMargin: "600px" }); mobs.observe(msent); }
       moreBusy = false;
       if (!moreDone && (fresh.length < 6 || msent.getBoundingClientRect().top < innerHeight + 800)) loadMore();
     } catch { moreDone = true; }

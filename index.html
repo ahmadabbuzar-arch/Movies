@@ -1575,12 +1575,27 @@ async function loadRepoProviders() {
       } catch (e) { S.failed.push({ id: n, error: e.message }); }
     }
   }));
+  // providers/skip.json {"skip": ["toonstream", "*anime*"]}: names (id or folder, "*" wildcard) that must not load
+  let skipList = [];
+  for (const [k, v] of files) if (/^providers\/(?:.*\/)?skip\.json$/i.test(k)) { try { const j = JSON.parse(v); skipList.push(...[].concat(Array.isArray(j) ? j : j.skip || [])); } catch (e) { S.failed.push({ id: k, error: e.message }); } }
+  const flat = (x) => String(x).toLowerCase().replace(/[^a-z0-9*]+/g, "");
+  const skipRes = skipList.map((x) => new RegExp("^" + flat(x).split("*").map((y) => y.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"));
+  const isSkipped = (...ns) => ns.some((n) => n && skipRes.some((r) => r.test(flat(n))));
+  const seen = new Set(), dropped = { skip: [], dup: 0 };
   for (const f of findProviders(files)) {
     const folder = f.entry ? f.entry.replace(/\.(c|m)?js$/i, "") : f.dir.split("/").pop() || "provider";
-    try { S.providers.push(await loadProvider({ id: folder, folder, files: f.files, baseUrl: "", entry: f.entry })); }
+    if (isSkipped(folder)) { dropped.skip.push(folder); continue; }
+    if (seen.has(folder.toLowerCase())) { dropped.dup++; continue; } // same provider in several zips/folders: load it once
+    seen.add(folder.toLowerCase());
+    try {
+      const prov = await loadProvider({ id: folder, folder, files: f.files, baseUrl: "", entry: f.entry });
+      if (isSkipped(prov.id, prov.name)) { dropped.skip.push(prov.id); continue; }
+      if (S.providers.some((x) => x.id === prov.id)) { dropped.dup++; continue; }
+      S.providers.push(prov);
+    }
     catch (e) { S.failed.push({ id: folder, error: e.message }); console.warn(`[skip] ${folder}: ${e.message}`); }
   }
-  S.report = `files read: ${files.size}\nlisted: ${names.length}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
+  S.report = `files read: ${files.size}\nlisted: ${names.length}\nduplicates ignored: ${dropped.dup}\nskipped by skip.json (${dropped.skip.length}): ${dropped.skip.join(", ")}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
 }
 (async () => {
   setNote("Loading…");

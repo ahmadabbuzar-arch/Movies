@@ -18,6 +18,11 @@ Files: `index.html` (the whole site) · `api/proxy.js` (Vercel function) · `ver
 - Zips inside zips, and one zip holding many providers (mixed formats are fine).
 - Not supported: providers that need their own server or an API (Stremio addons, hosted scrapers), Android/Kotlin plugins (.cs3, APK), Python, TypeScript source (needs compiling to JS first), DASH (.mpd) streams.
 
+## Skipping and duplicates
+- The same provider found in several zips/folders is loaded once (first one wins).
+- `providers/skip.json` lists providers that must not load: `{"skip": ["toonstream", "*anime*"]}` (id or folder name, `*` is a wildcard). Delete a name from it to bring that provider back.
+- Open the site with `#debug` at the end of the URL to see what loaded, what was skipped and why.
+
 ## Limits
 - Extractors (hubcloud, gdflix…) are not bundled. Providers needing Node-only modules won't load.
 - `cheerio` is emulated with jQuery (common selectors work; exotic ones may not).

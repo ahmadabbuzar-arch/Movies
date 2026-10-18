@@ -1422,8 +1422,11 @@ function openManager() {
 /* ===================== boot ===================== */
 $("#more").addEventListener("click", () => fetchPosts(false));
 const rowsData = []; let view = "all";
+// sharper posters: Cinemeta/metahub "small" -> "medium", TMDB w342 -> w500 (falls back to the original if it fails)
+const hiq = (u) => String(u || "").replace(/\/poster\/small\//, "/poster/medium/").replace(/\/t\/p\/w(?:92|154|185|342)\//, "/t/p/w500/");
+const sharp = (img, u) => { const o = u || "", h = hiq(o); if (h !== o) img.onerror = () => { img.onerror = null; img.src = o; }; img.src = h; return img; };
 const card = (p) => el("button", { class: "card", onclick: () => openDetail(p) },
-  el("div", { class: "ph" }, el("img", { src: p.image || "", alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), p.rating ? el("b", { class: "rt" }, "\u2605 " + p.rating) : null),
+  el("div", { class: "ph" }, sharp(el("img", { alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), p.image), p.rating ? el("b", { class: "rt" }, "\u2605 " + p.rating) : null),
   el("span", {}, p.title));
 const applyView = () => rowsData.forEach(({ row }) => { row.hidden = view !== "all" && row.dataset.k !== view; });
 async function renderHome() {

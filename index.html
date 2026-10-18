@@ -41,8 +41,8 @@ main{position:relative;padding:76px 0 48px}
 @media(min-width:500px){.row .card{flex-basis:24vw}}
 @media(min-width:1100px){.row .card{flex-basis:calc((100vw - 8vw - 40px)/6)}}
 @media(min-width:1800px){.row .card{flex-basis:calc((100vw - 8vw - 56px)/8)}}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:0 4vw}
-@media(min-width:500px){.grid{grid-template-columns:repeat(4,1fr)}}@media(min-width:1100px){.grid{grid-template-columns:repeat(6,1fr)}}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 4vw}
+@media(min-width:500px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(min-width:1100px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
 .card{position:relative;background:none;border:0;padding:0;text-align:left;cursor:pointer;transition:transform .2s,box-shadow .2s;border-radius:4px}
 .card:hover{transform:scale(1.05);z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.7)}
 .card img{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--panel);border-radius:4px;display:block}
@@ -206,6 +206,9 @@ h1{white-space:nowrap}
 .qt::before{content:"";width:4px;height:1em;border-radius:2px;background:var(--red)}
 .grid{gap:14px 10px}
 .grid .card{animation:up .4s var(--ease) both}
+
+/* cards must never be wider than their grid cell */
+.card{min-width:0;max-width:100%}.ph{width:100%}.card img{max-width:100%}
 </style>
 </head>
 <body>

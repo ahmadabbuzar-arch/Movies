@@ -12,6 +12,12 @@ Files: `index.html` (the whole site) · `api/proxy.js` (Vercel function) · `ver
 - Requests try the site directly first; if the site blocks browsers (CORS) or needs headers like Referer, they go through `/api/proxy`.
 - HLS (`.m3u8`) plays with hls.js; tries direct, falls back to the proxy.
 
+## Supported provider formats (zip / .js / .json upload via **+ Provider**)
+- Native `index.js` / `main.js` / `provider.js`, Nuvio-style `getStreams(tmdbId, type, season, episode)`, Vega-style split files (`posts.js`, `meta.js`, `episodes.js`, `stream.js`…), and single `.js` files.
+- Embed-template `.json`: `{"name":"X","movie":"https://host/embed/movie/{tmdb}","tv":"https://host/embed/tv/{tmdb}/{season}/{episode}"}` (or `{"url": "..."}`, or a list). Plays in an iframe; `{imdb}` is not supported.
+- Zips inside zips, and one zip holding many providers (mixed formats are fine).
+- Not supported: providers that need their own server or an API (Stremio addons, hosted scrapers), Android/Kotlin plugins (.cs3, APK), Python, TypeScript source (needs compiling to JS first), DASH (.mpd) streams.
+
 ## Limits
 - Extractors (hubcloud, gdflix…) are not bundled. Providers needing Node-only modules won't load.
 - `cheerio` is emulated with jQuery (common selectors work; exotic ones may not).

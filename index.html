@@ -218,12 +218,18 @@ h1{white-space:nowrap}
  .vbox{position:relative;top:auto;flex:none}
  .dscroll{display:block;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 }
+#addprov{margin-left:auto;background:#ffffff14;border:1px solid #ffffff26;border-radius:999px;padding:7px 14px;cursor:pointer;white-space:nowrap}#addprov:hover{background:#ffffff26}
+.manage{padding:20px 20px 24px}.manage h2{margin:0 0 12px}.manage h3{margin:20px 0 6px}.manage input[type=url],.manage input[type=text]{width:100%;margin-top:6px;background:#ffffff10;border:1px solid #ffffff26;border-radius:6px;padding:8px 10px}
+.manage .plist{list-style:none;padding:0;margin:0}.manage .plist li{border:1px solid #ffffff1f;border-radius:8px;padding:10px;margin-bottom:8px}
+.manage .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0;overflow:visible}.manage .note{padding:6px 0}.manage .ok{color:#7ddc8a}
+.manage button:not(.close){background:#ffffff14;border:1px solid #ffffff26;border-radius:6px;padding:7px 14px;cursor:pointer}.manage button.primary{background:var(--red);border-color:var(--red);margin-top:8px}.manage button:disabled{opacity:.5;cursor:default}
 </style>
 </head>
 <body>
 <header id="top">
   <div class="l"><h1>Reel Room</h1>
     <nav id="menu"><button data-v="all" class="on">Home</button><button data-v="movie">Movies</button><button data-v="series">Series</button></nav></div>
+  <button id="addprov" class="addp" type="button">+ Provider</button>
   <input id="search" type="search" placeholder="Titles, people, genres" aria-label="Search" hidden>
 </header>
 <section id="hero" hidden></section>
@@ -238,7 +244,7 @@ h1{white-space:nowrap}
 </main>
 <section class="empty" id="empty" hidden>
   <h2>No sources available</h2>
-  <p>Add provider files to the <code>providers/</code> folder of the site.</p>
+  <p>Tap <b>+ Provider</b> (top right) to upload a provider zip, or add files to the <code>providers/</code> folder of the site.</p>
 </section>
 <div id="modal"></div>
 <div id="detail"></div>
@@ -365,7 +371,7 @@ async function pfetchInner(input, init = {}) {
 }
 
 /* ===================== zip reader (browser, no library) ===================== */
-async function readZip(buf) {
+async function readZip(buf, depth = 0) {
   const dv = new DataView(buf), u8 = new Uint8Array(buf);
   let eocd = -1;
   for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 22 - 65535); i--)
@@ -385,7 +391,7 @@ async function readZip(buf) {
     const name = dec.decode(u8.subarray(p + 46, p + 46 + nl)).replace(/\\/g, "/").replace(/^\.\//, "");
     p += 46 + nl + xl + cl;
     if (name.endsWith("/") || flags & 1) continue;
-    if (!/\.(js|cjs|mjs|json)$/i.test(name) || /(^|\/)(node_modules|__MACOSX)\//.test(name) || /\.min\.js$/i.test(name) && usize > 2 * 1024 * 1024) continue;
+    if (!/\.(js|cjs|mjs|json|zip)$/i.test(name) || /(^|\/)(node_modules|__MACOSX)\//.test(name) || /\.min\.js$/i.test(name) && usize > 2 * 1024 * 1024) continue;
     if (name.split("/").includes("..") || name.startsWith("/")) continue; // unsafe path
     if (usize > 5 * 1024 * 1024) continue;
     const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
@@ -396,6 +402,10 @@ async function readZip(buf) {
       const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
       data = new Uint8Array(await new Response(stream).arrayBuffer());
     } else continue;
+    if (/\.zip$/i.test(name)) { // zip inside a zip: unpack it into a folder of the same name
+      if (depth < 3) try { (await readZip(data.slice().buffer, depth + 1)).forEach((v, k) => files.set(`${name.replace(/\.zip$/i, "")}/${k}`, v)); } catch { /* not a real zip */ }
+      continue;
+    }
     files.set(name, dec.decode(data));
   }
   return files;
@@ -404,7 +414,34 @@ async function readZip(buf) {
 // Find provider folders inside the unzipped files. Accepts: index/main/provider.js, Vega split files
 // (posts/catalog/search + stream), or any folder whose js files export getStream/getPosts.
 const ENTRY_NAMES = ["index.js", "main.js", "provider.js", "module.js", "app.js"];
+// JSON-only providers: {"name":"X","movie":"https://host/embed/movie/{tmdb}","tv":"https://host/embed/tv/{tmdb}/{season}/{episode}"}
+// (also {"url": ...}, or an array / {"providers":[...]} of them). Turned into a getStreams provider that plays the page in an iframe.
+function templateProviders(files) {
+  const P = /\{(tmdb|id)\}/, SEASON = /\{(season|s)\}/;
+  for (const [k, v] of [...files]) {
+    if (!/\.json$/i.test(k) || /(^|\/)(package(-lock)?|tsconfig|manifest|index)\.json$/i.test(k) || v.length > 50000) continue;
+    let j; try { j = JSON.parse(v); } catch { continue; }
+    const list = Array.isArray(j) ? j : Array.isArray(j?.providers) ? j.providers : [j];
+    list.forEach((t, i) => {
+      if (!t || typeof t !== "object") return;
+      const u = typeof t.url === "string" ? t.url : "";
+      const movie = t.movie || t.movieUrl || (u && !SEASON.test(u) ? u : ""), tv = t.tv || t.tvUrl || t.series || (u && SEASON.test(u) ? u : "");
+      if (![movie, tv].some((x) => typeof x === "string" && P.test(x))) return;
+      const base = k.split("/").pop().replace(/\.json$/i, ""), name = String(t.name || t.title || base).slice(0, 60);
+      const slug = (name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "embed") + (list.length > 1 ? "-" + (i + 1) : "");
+      const T = { name, movie: typeof movie === "string" ? movie : "", tv: typeof tv === "string" ? tv : "" };
+      const src = "const T = " + JSON.stringify(T) + ";\n" +
+        "const fill = (u, id, s, e) => u.replace(/\\{(tmdb|id)\\}/g, id).replace(/\\{(season|s)\\}/g, s).replace(/\\{(episode|e)\\}/g, e);\n" +
+        "async function getStreams(tmdbId, mediaType, season, episode) {\n" +
+        "  const u = mediaType === 'tv' ? T.tv : T.movie; if (!u) return [];\n" +
+        "  return [{ link: fill(u, tmdbId, season == null ? 1 : season, episode == null ? 1 : episode), type: 'embed', server: T.name }];\n}\n" +
+        "module.exports = { id: " + JSON.stringify(slug) + ", name: T.name, getStreams };\n";
+      files.set((k.includes("/") ? k.slice(0, k.lastIndexOf("/") + 1) : "") + slug + "/index.js", src); // own folder, so it never hides sibling providers
+    });
+  }
+}
 function findProviders(files) {
+  templateProviders(files);
   const has = (d, f) => files.has(d ? `${d}/${f}` : f);
   const dirs = new Set([...files.keys()].filter((k) => /\.(c|m)?js$/i.test(k)).map((k) => (k.includes("/") ? k.slice(0, k.lastIndexOf("/")) : "")));
   const sniff = (d) => [...files].some(([k, v]) => /\.(c|m)?js$/i.test(k) && dirname(k) === d && /getStream|getPosts|getSearchPosts|getStreams/.test(v));
@@ -1366,14 +1403,14 @@ function openManager() {
             } }))))
       : el("p", { class: "note" }, "No providers installed.");
     const failed = S.failed.map((f) => el("p", { class: "note err" }, `${f.id}: ${f.error}`));
-    const fileIn = el("input", { type: "file", accept: ".zip,.js,.cjs,.mjs,application/zip,text/javascript", onchange: (e) => { file = e.target.files[0] || null; draw(); } });
+    const fileIn = el("input", { type: "file", accept: ".zip,.js,.cjs,.mjs,.json,application/zip,text/javascript,application/json", onchange: (e) => { file = e.target.files[0] || null; draw(); } });
     const proxyIn = el("input", { type: "text", value: store.get("proxyUrl"), placeholder: "/api/proxy (default, same site)",
       onchange: (e) => store.set("proxyUrl", e.target.value.trim()) });
     const sec = el("section", { class: "detail manage", onclick: (e) => e.stopPropagation() },
       el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"),
       el("h2", {}, "Providers"), list, failed,
       el("h3", {}, "Upload provider zip"),
-      el("p", { class: "note" }, "Native (index.js / main.js), Nuvio-style (getStreams), Vega-style (posts.js, meta.js, stream.js…) and single .js providers. A zip with many providers installs them all. Provider code runs in your browser, so only upload zips you trust."),
+      el("p", { class: "note" }, "Native (index.js / main.js), Nuvio-style (getStreams), Vega-style (posts.js, meta.js, stream.js…), single .js providers and embed-template .json providers (movie/tv URL with {tmdb} {season} {episode}). Zips inside zips and zips with many providers work too. Provider code runs in your browser, so only upload zips you trust."),
       fileIn,
       el("button", { class: "primary", disabled: busy || !file, onclick: upload }, busy ? "Working…" : "Upload & install"),
       el("h3", {}, "Proxy URL"),
@@ -1388,12 +1425,13 @@ function openManager() {
     try {
       let files;
       if (/\.(c|m)?js$/i.test(file.name)) files = new Map([["index.js", await file.text()]]);
+      else if (/\.json$/i.test(file.name)) files = new Map([[file.name, await file.text()]]);
       else {
         files = await readZip(await file.arrayBuffer());
         if (!files.size) throw new Error("Zip has no .js files");
       }
       const found = findProviders(files);
-      if (!found.length) throw new Error("No provider found (need index.js/main.js, posts.js + stream.js, or any js exporting getPosts + getStream, or Nuvio-style getStreams)");
+      if (!found.length) throw new Error("No provider found (need index.js/main.js, posts.js + stream.js, any js exporting getPosts + getStream, Nuvio-style getStreams, or an embed .json with a {tmdb} URL)");
       const base = file.name.replace(/\.zip$/i, "");
       const added = [], failed = [];
       for (const f of found) {
@@ -1532,9 +1570,18 @@ async function loadRepoProviders() {
   }
   S.report = `files read: ${files.size}\nlisted: ${names.length}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
 }
+async function loadSavedProviders() { // providers installed through "+ Provider" (kept in this browser)
+  let recs = []; try { recs = await idb.all(); } catch { return; }
+  for (const r of recs) {
+    if (S.providers.some((x) => x.id === r.id)) continue;
+    try { S.providers.push(await loadProvider(r)); } catch (e) { S.failed.push({ id: r.id, error: e.message }); }
+  }
+}
+$("#addprov").addEventListener("click", openManager);
 (async () => {
   setNote("Loading…");
   await loadRepoProviders();
+  await loadSavedProviders();
   setNote("");
   if (location.hash === "#debug") $("#modal").replaceChildren(el("div", { class: "overlay", onclick: (e) => e.target.classList.contains("overlay") && e.target.remove() }, el("pre", { class: "diag" }, S.report || "")));
   S.pid = AUTO; renderShell(); await renderHome();

@@ -1282,6 +1282,8 @@ function streamInfo(x) {
   const m = t.match(/(2160|1440|1080|720|576|480|360|240)\s*p?/i);
   return { langs: langs.length ? langs : ["Original"], q: /4k|uhd/i.test(t) || (m && m[1] === "2160") ? "4K" : m ? m[1] + "p" : "SD", srv: x.provider || x.server || "Server" };
 }
+const hiddenSrc = () => { try { const a = JSON.parse(store.get("hide", "[]")); return Array.isArray(a) ? a : []; } catch { return []; } };
+const hideSrc = (name) => store.set("hide", JSON.stringify([...new Set([...hiddenSrc(), name])]));
 const selectBox = (label, opts, val, on) => el("label", { class: "sel" }, label,
   el("select", { onchange: (e) => on(e.target.value) }, opts.map((o) => el("option", { value: o, selected: o === val }, o))));
 
@@ -1315,6 +1317,20 @@ function openDetail(post) {
     withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
       if (gone) return;
       streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => prefRank(a) - prefRank(b));
+      const hid = hiddenSrc();
+      const kept = streams.filter((x) => !hid.includes(x._i.srv));
+      if (kept.length) streams = kept; // never hide everything
+      if (meta && meta.type === "movie") { // a label like "S02E05" or "(1987)" on a film that is not that: some other video
+        const yrE = parseInt(meta.year, 10) || 0;
+        const bad = (x) => {
+          const t = [x.title, x.name, x.description, x.label].filter((v) => typeof v === "string").join(" ");
+          if (/\bS\d{1,2}\s?E\d{1,3}\b/i.test(t)) return true;
+          const ys = (t.match(/\b(?:19|20)\d{2}\b(?!\s*[x\u00d7]\s*\d)/g) || []).map(Number);
+          return !!yrE && ys.length > 0 && !ys.some((y) => Math.abs(y - yrE) <= 1);
+        };
+        const good = streams.filter((x) => !bad(x));
+        if (good.length && good.length < streams.length) { plog(`ignored ${streams.length - good.length} stream(s) whose label names another title/year`); streams = good; }
+      }
       const savedSrv = store.get("srv", "All"); // the server you picked last time stays selected while it exists
       f = { lang: "All", q: "All", srv: streams.some((x) => x._i.srv === savedSrv) ? savedSrv : "All" };
       if (!streams.length) { err = "No playable stream found."; errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
@@ -1337,9 +1353,19 @@ function openDetail(post) {
     playerMenu = () => {
       const uq = (fn) => [...new Set((streams || []).flatMap(fn))];
       const sec = (title, key, vals, all) => ({ title, items: [["All", all], ...vals.map((x) => [x, x])].map(([val, label]) => ({ label, active: f[key] === val, pick: () => { f[key] = val; if (key === "srv") store.set("srv", val); idx = 0; err = ""; errDetail = ""; draw(); } })) });
-      return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any")];
+      const now = vis()[idx], hid = hiddenSrc();
+      const wrong = { title: "Wrong video?", items: [
+        { label: "Try next source", active: false, pick: () => { if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); } } },
+        ...(now ? [{ label: `Never use ${now._i.srv}`, active: false, pick: () => {
+          hideSrc(now._i.srv);
+          const rest = streams.filter((x) => x._i.srv !== now._i.srv);
+          if (rest.length) { streams = rest; f.srv = "All"; idx = 0; err = ""; errDetail = ""; draw(); }
+        } }] : []),
+        ...(hid.length ? [{ label: `Show hidden sources again (${hid.length})`, active: false, pick: () => { store.set("hide", "[]"); } }] : []),
+      ] };
+      return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any"), wrong];
     };
-    videoBox.dataset.title = (meta && meta.title) || post.title || "";
+    videoBox.dataset.title = ((meta && meta.title) || post.title || "") + (s && s.server ? "  ·  " + s.server : "");
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
       if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
       err = m + " Try another server or quality."; errDetail = d || ""; drawBody();

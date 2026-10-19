@@ -1182,7 +1182,7 @@ function playerShell(v, title) {
   return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
 }
 
-function mountPlayer(box, s, poster, onError, extra, check) {
+function mountPlayer(box, s, poster, onError, extra, check, hooks = {}) {
   if (s.type === "embed" || s.type === "iframe" || s.type === "page") {
     const f = el("iframe", { src: s.link, allowfullscreen: true, allow: "autoplay; fullscreen; picture-in-picture", referrerpolicy: "no-referrer", style: "width:100%;aspect-ratio:16/9;border:0;background:#000" });
     box.replaceChildren(f);
@@ -1204,14 +1204,16 @@ function mountPlayer(box, s, poster, onError, extra, check) {
   const urls = hdrs ? [proxyUrl(s.link, hdrs), s.link] : [s.link, proxyUrl(s.link, {}), proxyUrl(s.link, { Referer: orig })];
   const host = (() => { try { return new URL(s.link).host; } catch { return s.link; } })();
   const log = [];
-  let attempt = 0, hls = null, dead = false, wd = 0, started = false, codecChecked = false;
+  let attempt = 0, hls = null, dead = false, wd = 0, started = false, codecChecked = false, playedOnce = false;
+  const t0 = Date.now(); // one stream gets about 22s in total, then the next source is tried
 
   // last resort: ask the proxy what the server really answers, so the error says why
   const finish = async (msg) => {
+    if (hooks.hasNext && hooks.hasNext()) { if (!dead) onError(msg, log.join("\n")); return; } // another source is waiting: don't spend time on diagnostics
     const probes = [];
     for (const h of hdrs ? [hdrs] : [{}, { Referer: orig }]) {
       try {
-        const r = await fetch(proxyUrl(s.link, h), { headers: { Range: "bytes=0-199" } });
+        const r = await fetch(proxyUrl(s.link, h), { headers: { Range: "bytes=0-199" }, signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
         const ct = (r.headers.get("content-type") || "").split(";")[0];
         const txt = /text|json|mpegurl|xml/i.test(ct) ? (await r.text()).slice(0, 100).replace(/\s+/g, " ") : "(binary)";
         probes.push(`proxy ${JSON.stringify(h).slice(0, 120)} -> HTTP ${r.status} ${ct} ${txt}`);
@@ -1220,7 +1222,9 @@ function mountPlayer(box, s, poster, onError, extra, check) {
     if (!dead) onError(msg, [`type=${s.type || "?"} host=${host}`, `link=${String(s.link).slice(0, 140)}`, ...log, ...probes].join("\n"));
   };
   const fail = (msg) => {
-    if (attempt < urls.length - 1) { attempt++; start(); }
+    const late = Date.now() - t0 > 22000;
+    if (late) finish(msg);
+    else if (attempt < urls.length - 1) { attempt++; start(); }
     else if (!s.type && !isHls && !triedHls) { triedHls = true; isHls = true; attempt = 0; log.push("retrying as HLS"); start(); }
     else finish(msg);
   };
@@ -1232,7 +1236,7 @@ function mountPlayer(box, s, poster, onError, extra, check) {
   function start() {
     if (dead) return;
     clearTimeout(wd); started = false;
-    wd = setTimeout(() => { if (!dead && !started) { log.push(`no data after 12s (try ${attempt + 1})`); fail("Stream took too long to start."); } }, 12000);
+    wd = setTimeout(() => { if (!dead && !started) { log.push(`no data in time (try ${attempt + 1})`); fail("Stream took too long to start."); } }, urls[attempt] === s.link ? 7000 : 12000);
     const src = urls[attempt];
     hls?.destroy(); hls = null;
     if (!isHls) return native(src);
@@ -1263,6 +1267,7 @@ function mountPlayer(box, s, poster, onError, extra, check) {
   v.addEventListener("loadeddata", () => { started = true; clearTimeout(wd); });
   v.addEventListener("playing", () => {
     started = true; clearTimeout(wd);
+    if (!playedOnce) { playedOnce = true; hooks.onPlay && hooks.onPlay(); }
     if (codecChecked) return; codecChecked = true;
     setTimeout(() => { if (!dead && v.videoWidth === 0 && v.readyState >= 2) onError("This video format isn't supported on this device.", log.concat("audio plays but no video frames: unsupported codec (HEVC/4K?)").join("\n")); }, 2000);
   });
@@ -1282,6 +1287,8 @@ function streamInfo(x) {
   const m = t.match(/(2160|1440|1080|720|576|480|360|240)\s*p?/i);
   return { langs: langs.length ? langs : ["Original"], q: /4k|uhd/i.test(t) || (m && m[1] === "2160") ? "4K" : m ? m[1] + "p" : "SD", srv: x.provider || x.server || "Server" };
 }
+const relMap = () => { try { const m = JSON.parse(store.get("rel", "{}")); return m && typeof m === "object" ? m : {}; } catch { return {}; } };
+const noteSrc = (name, d) => { if (!name) return; const m = relMap(); m[name] = Math.max(-5, Math.min(5, (m[name] || 0) + d)); store.set("rel", JSON.stringify(m)); };
 const hiddenSrc = () => { try { const a = JSON.parse(store.get("hide", "[]")); return Array.isArray(a) ? a : []; } catch { return []; } };
 const hideSrc = (name) => store.set("hide", JSON.stringify([...new Set([...hiddenSrc(), name])]));
 const selectBox = (label, opts, val, on) => el("label", { class: "sel" }, label,
@@ -1316,7 +1323,8 @@ function openDetail(post) {
     if (!matchMedia("(max-width:700px)").matches) videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" }); else dscroll.scrollTop = 0;
     withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
       if (gone) return;
-      streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) })).sort((a, b) => prefRank(a) - prefRank(b));
+      streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) }));
+      { const rm = relMap(), sc = (x) => prefRank(x) - 4 * (rm[x._i.srv] || 0); streams.sort((a, b) => sc(a) - sc(b)); } // quality first, but sources that keep failing sink and ones that played rise
       const hid = hiddenSrc();
       const kept = streams.filter((x) => !hid.includes(x._i.srv));
       if (kept.length) streams = kept; // never hide everything
@@ -1371,13 +1379,15 @@ function openDetail(post) {
       ] };
       return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any"), wrong];
     };
-    videoBox.dataset.title = ((meta && meta.title) || post.title || "") + (s && s.server ? "  ·  " + s.server : "");
+    videoBox.dataset.title = ((meta && meta.title) || post.title || "") + (s && s.server ? "  ·  " + s.server + (vis().length > 1 ? `  (${idx + 1}/${vis().length})` : "") : "");
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
+      noteSrc(s._i.srv, -1);
       if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
       err = m + " Try another server or quality."; errDetail = d || ""; drawBody();
     }, p.rec.streamHeaders, meta && meta.type === "movie" && meta.runtime > 30
       && !allowed.has(s.link)
       ? { min: meta.runtime, wrong: (m) => {
+          noteSrc(s._i.srv, -1);
           if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; }
           const fmt = (x) => { x = Math.round(x); return x >= 60 ? `${Math.floor(x / 60)}h ${x % 60}m` : `${x} min`; };
           stopPlayer?.(); stopPlayer = null;
@@ -1385,7 +1395,7 @@ function openDetail(post) {
             el("p", {}, `This is probably the wrong video: it runs ${fmt(m)}, the film is about ${fmt(meta.runtime)}. Source: ${s._i.srv}.`),
             el("button", { onclick: () => { allowed.add(s.link); draw(); } }, "Play anyway"), " ",
             el("button", { onclick: () => dropProvider(s._i.srv) }, `Never use ${s._i.srv}`))));
-        } } : null);
+        } } : null, { hasNext: () => idx < vis().length - 1, onPlay: () => noteSrc(s._i.srv, 1) });
     else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }

@@ -1,6 +1,6 @@
 # PopcornNet (single file, Vercel + GitHub)
 
-Files: `index.html` (the whole site) · `logo.png`, `apple-touch-icon.png` (logo/favicon) · `api/proxy.js` (Vercel function) · `vercel.json`
+Files: `index.html` (the whole site) · `logo.png`, `favicon.ico`, `favicon-*.png`, `apple-touch-icon.png`, `android-chrome-*.png`, `site.webmanifest` (logo and icons) · `api/proxy.js` (Vercel function) · `vercel.json`
 
 ## Deploy
 1. Put these files in a GitHub repo (keep the `api/` folder).

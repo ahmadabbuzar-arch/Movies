@@ -1291,7 +1291,7 @@ const selectBox = (label, opts, val, on) => el("label", { class: "sel" }, label,
 function openDetail(post) {
   const p = cur();
   const host = $("#detail");
-  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false;
+  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false, allowed = new Set(), curLink = "";
 
   let more = null; // must exist before the first draw()
   let mobs = null, morePage = 1, moreBusy = false, moreDone = false;
@@ -1312,7 +1312,7 @@ function openDetail(post) {
   host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
 
   const play = (link, type) => {
-    streams = null; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
+    streams = null; curLink = String(link); allowed = new Set(); err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
     if (!matchMedia("(max-width:700px)").matches) videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" }); else dscroll.scrollTop = 0;
     withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
       if (gone) return;
@@ -1345,6 +1345,12 @@ function openDetail(post) {
     }).catch((e) => { if (gone) return; eps = null; err = e.message; draw(); });
   };
 
+  const dropProvider = (name) => {
+    hideSrc(name);
+    const rest = (streams || []).filter((x) => x._i.srv !== name);
+    if (rest.length) { streams = rest; f.srv = "All"; idx = 0; err = ""; errDetail = ""; draw(); }
+    else { streams = []; err = `${name} was the only source and is now hidden. Use the gear menu > Show hidden sources again to bring it back.`; draw(); }
+  };
   const vis = () => (streams || []).filter((x) => (f.lang === "All" || x._i.langs.includes(f.lang)) && (f.q === "All" || x._i.q === f.q) && (f.srv === "All" || x._i.srv === f.srv));
   function draw() {
     if (gone) return;
@@ -1355,12 +1361,12 @@ function openDetail(post) {
       const sec = (title, key, vals, all) => ({ title, items: [["All", all], ...vals.map((x) => [x, x])].map(([val, label]) => ({ label, active: f[key] === val, pick: () => { f[key] = val; if (key === "srv") store.set("srv", val); idx = 0; err = ""; errDetail = ""; draw(); } })) });
       const now = vis()[idx], hid = hiddenSrc();
       const wrong = { title: "Wrong video?", items: [
-        { label: "Try next source", active: false, pick: () => { if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); } } },
-        ...(now ? [{ label: `Never use ${now._i.srv}`, active: false, pick: () => {
-          hideSrc(now._i.srv);
-          const rest = streams.filter((x) => x._i.srv !== now._i.srv);
-          if (rest.length) { streams = rest; f.srv = "All"; idx = 0; err = ""; errDetail = ""; draw(); }
+        ...(now ? [{ label: "Source info", active: false, pick: () => {
+          let h = ""; try { h = new URL(now.link).host; } catch { /* keep empty */ }
+          err = "Source info"; errDetail = `source: ${now._i.srv}\nlabel: ${[now.title, now.name, now.server].filter((v) => typeof v === "string" && v).join(" | ").slice(0, 200)}\ntype: ${now.type || "?"}  quality: ${now._i.q}\nhost: ${h}\nurl: ${String(now.link).slice(0, 220)}\nfilm: ${(meta && meta.title) || ""} ${(meta && meta.year) || ""} (${(meta && meta.runtime) || "?"} min)\ntmdb link: ${curLink}`; drawBody();
         } }] : []),
+        { label: "Try next source", active: false, pick: () => { if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); } } },
+        ...(now ? [{ label: `Never use ${now._i.srv}`, active: false, pick: () => dropProvider(now._i.srv) }] : []),
         ...(hid.length ? [{ label: `Show hidden sources again (${hid.length})`, active: false, pick: () => { store.set("hide", "[]"); } }] : []),
       ] };
       return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any"), wrong];
@@ -1370,7 +1376,16 @@ function openDetail(post) {
       if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
       err = m + " Try another server or quality."; errDetail = d || ""; drawBody();
     }, p.rec.streamHeaders, meta && meta.type === "movie" && meta.runtime > 30
-      ? { min: meta.runtime, wrong: () => { if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); } } } : null);
+      && !allowed.has(s.link)
+      ? { min: meta.runtime, wrong: (m) => {
+          if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; }
+          const fmt = (x) => { x = Math.round(x); return x >= 60 ? `${Math.floor(x / 60)}h ${x % 60}m` : `${x} min`; };
+          stopPlayer?.(); stopPlayer = null;
+          videoBox.replaceChildren(el("div", { class: "novid" }, el("div", {},
+            el("p", {}, `This is probably the wrong video: it runs ${fmt(m)}, the film is about ${fmt(meta.runtime)}. Source: ${s._i.srv}.`),
+            el("button", { onclick: () => { allowed.add(s.link); draw(); } }, "Play anyway"), " ",
+            el("button", { onclick: () => dropProvider(s._i.srv) }, `Never use ${s._i.srv}`))));
+        } } : null);
     else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }

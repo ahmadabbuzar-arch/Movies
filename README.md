@@ -24,7 +24,7 @@ Files: `index.html` (the whole site) · `logo.png`, `favicon.ico`, `favicon-*.pn
 - Open the site with `#debug` at the end of the URL to see what loaded, what was skipped and why.
 
 ## Wrong video?
-The player's title bar shows which source is playing. In the gear menu, **Wrong video?** offers *Try next source* and *Never use <source>* (remembered in this browser; *Show hidden sources again* undoes it). Movies are also checked automatically: a video whose length is far from the film's runtime, or whose label names another year or an episode (S01E02), is skipped.
+The player's title bar shows which source is playing. In the gear menu, **Wrong video?** offers *Try next source* and *Never use <source>* (remembered in this browser; *Show hidden sources again* undoes it). Movies are also checked automatically: a video whose length is far from the film's runtime, or whose label names another year or an episode (S01E02), is skipped. If the last remaining source also looks wrong, the player stops and shows a warning with **Play anyway** and **Never use <source>**.
 
 ## Limits
 - Extractors (hubcloud, gdflix…) are not bundled. Providers needing Node-only modules won't load.

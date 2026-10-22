@@ -29,6 +29,13 @@ The player's title bar shows which source is playing. In the gear menu, **Wrong 
 ## Dead streams
 A stream gets about 22s in total (7s for the direct try, 12s for proxy tries); then the next source is tried automatically, and the player title shows which one (e.g. `(3/12)`). Sources that play move up, sources that keep failing move down (remembered in this browser, quality still counts most).
 
+## Standalone HTML / APK (`popcornnet-apk.html`)
+A copy of the site that does not need to be hosted: it sets `window.BACKEND` to the live site and uses its `/api/*` and `/providers/*`.
+1. Vercel → Settings → Environment Variables → add `APP_KEY` = any long random string, redeploy.
+2. In `popcornnet-apk.html` replace `PUT_YOUR_APP_KEY_HERE` with the same string.
+3. Upload that HTML to an HTML-to-APK builder (needs internet).
+The key is stored inside the app, so anyone who unpacks the APK can read it: treat it as a deterrent against random sites, not as a secret. Change it in Vercel (and rebuild the APK) if it leaks. Without `APP_KEY`, search/browse still work but streams that need the proxy will not.
+
 ## Limits
 - Extractors (hubcloud, gdflix…) are not bundled. Providers needing Node-only modules won't load.
 - `cheerio` is emulated with jQuery (common selectors work; exotic ones may not).

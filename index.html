@@ -340,8 +340,10 @@ const loadScript = (src) => new Promise((res, rej) => {
 });
 
 /* ===================== proxy-aware fetch ===================== */
-const getProxy = () => (store.get("proxyUrl") || "/api/proxy").trim();
-const proxyUrl = (url, headers = {}) => `${getProxy()}?u=${enc(url)}&h=${enc(JSON.stringify(headers))}`;
+// Normal site: same-origin /api. Standalone HTML (e.g. inside an APK) sets window.BACKEND = "https://your-site" (and window.APP_KEY) before this script.
+const API = String(window.BACKEND || "").replace(/\/+$/, ""), APP_KEY = String(window.APP_KEY || "");
+const getProxy = () => (store.get("proxyUrl") || API + "/api/proxy").trim();
+const proxyUrl = (url, headers = {}) => `${getProxy()}?u=${enc(url)}&h=${enc(JSON.stringify(headers))}${APP_KEY ? "&k=" + enc(APP_KEY) : ""}`;
 const FORBIDDEN = /^(referer|user-agent|origin|cookie|host|accept-encoding|sec-.*)$/i;
 
 const PLOG = [];
@@ -750,7 +752,7 @@ async function loadProvider(rec) {
       const [m, t] = await Promise.all(["movie", "series"].map((k) => cj(ctx, `/catalog/${k}/top/search=${q}.json`).catch(() => ({ metas: [] }))));
       return [...(m.metas || []), ...(t.metas || [])].map(toPost);
     };
-    const tj = async (qs) => { const r = await fetch("/api/tmdb?" + new URLSearchParams(qs)); if (!r.ok) throw new Error("tmdb " + r.status); return r.json(); };
+    const tj = async (qs) => { const r = await fetch(API + "/api/tmdb?" + new URLSearchParams(qs)); if (!r.ok) throw new Error("tmdb " + r.status); return r.json(); };
     let tmdbOk = null;
     const hasTmdb = () => (tmdbOk ??= tj({ check: 1 }).then((j) => j.configured !== false).catch(() => false));
     const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -1627,14 +1629,14 @@ addEventListener("scroll", () => $("#top").classList.toggle("solid", scrollY > 2
 // Providers ship with the site: every file in /providers is loaded automatically.
 async function loadRepoProviders() {
   let names = [];
-  try { names = (await (await fetch("/api/providers")).json()).files || []; } catch { /* fall back */ }
-  if (!names.length) try { names = await (await fetch("providers/index.json")).json(); } catch { /* none */ }
+  try { names = (await (await fetch(API + "/api/providers")).json()).files || []; } catch { /* fall back */ }
+  if (!names.length) try { names = await (await fetch(API + "/providers/index.json")).json(); } catch { /* none */ }
   const files = new Map();
   const queue = [...names]; // fetch 8 files at a time; only .js/.json are needed, other file types are ignored
   await Promise.all(Array.from({ length: 8 }, async () => {
     for (let n; (n = queue.shift()); ) {
       try {
-        const r = await fetch("providers/" + n.split("/").map(encodeURIComponent).join("/")); if (!r.ok) continue;
+        const r = await fetch(API + "/providers/" + n.split("/").map(encodeURIComponent).join("/")); if (!r.ok) continue;
         if (/\.zip$/i.test(n)) (await readZip(await r.arrayBuffer())).forEach((v, k) => files.set(`providers/${n.replace(/\.zip$/i, "")}/${k}`, v)); // zips work without unzipping
         else files.set("providers/" + n, await r.text());
       } catch (e) { S.failed.push({ id: n, error: e.message }); }

@@ -1,6 +1,7 @@
 // Server-side TMDB proxy: the API key lives in the Vercel env var TMDB_API_KEY and never reaches the browser.
 module.exports = async (req, res) => {
   const key = process.env.TMDB_API_KEY;
+  res.setHeader("access-control-allow-origin", "*");
   res.setHeader("cache-control", "s-maxage=3600, stale-while-revalidate=86400");
   if (!key) return res.status(200).json({ configured: false });
   const { path: p = "", check, ...rest } = req.query || {};

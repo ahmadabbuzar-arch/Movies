@@ -3,6 +3,7 @@
 // and play HLS (.m3u8) streams. Works for GET/POST/HEAD.
 //
 // Optional env vars (Vercel -> Settings -> Environment Variables):
+//   APP_KEY          secret string; requests carrying &k=<APP_KEY> may come from any origin (standalone HTML / APK)
 //   ALLOWED_ORIGINS  comma list of extra origins allowed to use this proxy (e.g. your GitHub Pages URL)
 const dns = require("node:dns").promises;
 const net = require("node:net");
@@ -64,6 +65,11 @@ async function safeFetch(url, init) {
   throw new Error("Too many redirects");
 }
 
+function keyOk(req) {
+  const key = process.env.APP_KEY;
+  if (!key) return false;
+  try { return new URL(req.url, "http://x").searchParams.get("k") === key; } catch { return false; }
+}
 function allowedOrigin(req) {
   const host = req.headers.host;
   const src = req.headers.origin || req.headers.referer || "";
@@ -77,7 +83,7 @@ function allowedOrigin(req) {
 
 module.exports = async (req, res) => {
   const fail = (code, msg) => { res.statusCode = code; res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ error: msg })); };
-  const origin = allowedOrigin(req);
+  const origin = allowedOrigin(req) || (keyOk(req) ? "*" : "");
   if (!origin) return fail(403, "Origin not allowed");
   res.setHeader("access-control-allow-origin", origin);
   res.setHeader("vary", "Origin");
@@ -117,7 +123,8 @@ module.exports = async (req, res) => {
     if (/mpegurl/i.test(ct) || /\.m3u8(\?|$)/i.test(url)) {
       const proto = req.headers["x-forwarded-proto"] || "https";
       const self = `${proto}://${req.headers.host}${(req.url || "").split("?")[0]}`;
-      const prox = (abs) => `${self}?u=${encodeURIComponent(abs)}&h=${encodeURIComponent(hjson)}`;
+      const kq = q.get("k") ? `&k=${encodeURIComponent(q.get("k"))}` : "";
+      const prox = (abs) => `${self}?u=${encodeURIComponent(abs)}&h=${encodeURIComponent(hjson)}${kq}`;
       const text = (await r.text()).split(/\r?\n/).map((line) => {
         if (!line.trim()) return line;
         if (line.startsWith("#")) return line.replace(/URI="([^"]+)"/g, (_m, u) => `URI="${prox(new URL(u, url).href)}"`);

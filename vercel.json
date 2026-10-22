@@ -1,6 +1,22 @@
 {
   "functions": {
-    "api/proxy.js": { "maxDuration": 60 },
-    "api/providers.js": { "maxDuration": 10, "includeFiles": "providers/**" }
-  }
+    "api/proxy.js": {
+      "maxDuration": 60
+    },
+    "api/providers.js": {
+      "maxDuration": 10,
+      "includeFiles": "providers/**"
+    }
+  },
+  "headers": [
+    {
+      "source": "/providers/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ]
 }

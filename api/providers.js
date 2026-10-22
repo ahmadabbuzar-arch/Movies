@@ -11,6 +11,7 @@ function walk(dir, base = "") {
 }
 module.exports = (req, res) => {
   res.setHeader("content-type", "application/json");
+  res.setHeader("access-control-allow-origin", "*");
   res.setHeader("cache-control", "s-maxage=300, stale-while-revalidate=600");
   try { res.end(JSON.stringify({ files: walk(path.join(process.cwd(), "providers")) })); }
   catch (e) { res.end(JSON.stringify({ files: [], error: e.message })); }

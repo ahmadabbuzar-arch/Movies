@@ -237,8 +237,9 @@ h1{white-space:nowrap}
 .manage button:not(.close){background:#ffffff14;border:1px solid #ffffff26;border-radius:6px;padding:7px 14px;cursor:pointer}.manage button.primary{background:var(--red);border-color:var(--red);margin-top:8px}.manage button:disabled{opacity:.5;cursor:default}
 h1{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:.01em;color:#fff;text-shadow:none}h1 img{height:1.7em;width:auto}h1 b{color:var(--red);font-weight:inherit}
 .novid{white-space:pre-line}.bk{position:fixed;left:0;right:0;bottom:0;z-index:9998;background:#b00020;color:#fff;padding:10px 14px calc(10px + env(safe-area-inset-bottom));font-size:.85rem;line-height:1.35}.bk button{float:right;margin-left:10px;border:0;border-radius:4px;background:#ffffff33;color:#fff;padding:2px 8px}
-#foot{margin:36px auto 0;padding:22px 4vw calc(28px + env(safe-area-inset-bottom));border-top:1px solid #ffffff1a;text-align:center;color:var(--ink2);font-size:.8rem}
-#foot nav{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:center;margin-bottom:10px}#foot a{cursor:pointer;color:var(--ink);text-decoration:underline;text-underline-offset:3px}#foot p{margin:0;max-width:560px;margin-inline:auto;line-height:1.4}
+#foot{position:fixed;left:0;right:0;bottom:0;z-index:15;padding:9px 3vw calc(9px + env(safe-area-inset-bottom));background:#141414f2;border-top:1px solid #ffffff1f;backdrop-filter:blur(8px);text-align:center;font-size:.78rem;color:var(--ink2)}
+#foot nav{display:flex;flex-wrap:wrap;gap:4px 16px;justify-content:center}#foot a{cursor:pointer;color:var(--ink);text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+body{padding-bottom:calc(46px + env(safe-area-inset-bottom))}.bk{bottom:calc(42px + env(safe-area-inset-bottom))}
 .info h2{margin:0 0 4px}.info h3{margin:18px 0 4px;font-size:1rem}.info p,.info li{line-height:1.5;font-size:.92rem}.info small.d{color:var(--ink2)}.info ul{padding-left:20px;margin:6px 0}
 .info label{display:block;margin-top:12px;font-size:.85rem;color:var(--ink2)}.info input,.info select,.info textarea{display:block;width:100%;margin-top:5px;background:#ffffff10;color:inherit;border:1px solid #ffffff26;border-radius:6px;padding:9px 10px;font:inherit}.info select option{color:#000}.info textarea{min-height:90px;resize:vertical}
 .info .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.info .mail{color:var(--red);word-break:break-all}
@@ -262,8 +263,7 @@ h1{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:.0
   <button class="more" id="more" hidden>Load more</button>
 </main>
 <footer id="foot">
-  <nav aria-label="Legal"><a data-i="about">About</a><a data-i="privacy">Privacy Policy</a><a data-i="contact">Contact us</a><a data-i="report">Report a movie</a></nav>
-  <p>PopcornNet does not host or upload any movies. All content comes from third-party providers.</p>
+  <nav aria-label="Legal"><a data-i="about">About</a><a data-i="privacy">Privacy Policy</a><a data-i="contact">Contact</a><a data-i="report">Report a movie</a></nav>
 </footer>
 <section class="empty" id="empty" hidden>
   <h2>No sources available</h2>

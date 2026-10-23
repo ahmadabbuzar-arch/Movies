@@ -45,7 +45,7 @@ The key is stored inside the app, so anyone who unpacks the APK can read it: tre
 Vercel's free plan runs a cron once a day, within the scheduled hour. Browsers (not the APK) do not get these notifications.
 
 ## Legal pages, reports and removals
-The footer has About (disclaimer: nothing is hosted here, all content comes from third-party providers), Privacy Policy, Contact us (sarimforbusiness@gmail.com) and Report a movie. Every title also has a "Report this title" link. Reports open an email to the contact address (with a Copy button for apps that cannot open mail).
+The fixed bar at the bottom of the screen has About (disclaimer: nothing is hosted here, all content comes from third-party providers), Privacy Policy, Contact us (sarimforbusiness@gmail.com) and Report a movie. Every title also has a "Report this title" link. Reports open an email to the contact address (with a Copy button for apps that cannot open mail).
 To take a title off the site after a report, add it to `blocked.json` at the repo root and push:
 `{"ids": ["tt0111161", "14836"], "titles": ["Some Title"]}` (IMDb id, TMDB id, or exact title). Blocked titles disappear from lists, search and "More like this". It does not remove files from the third-party sites that host them.
 The texts are in `index.html` (search for `openInfo`); they are not legal advice, so have them reviewed if you need that.

@@ -237,9 +237,24 @@ h1{white-space:nowrap}
 .manage button:not(.close){background:#ffffff14;border:1px solid #ffffff26;border-radius:6px;padding:7px 14px;cursor:pointer}.manage button.primary{background:var(--red);border-color:var(--red);margin-top:8px}.manage button:disabled{opacity:.5;cursor:default}
 h1{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:.01em;color:#fff;text-shadow:none}h1 img{height:1.7em;width:auto}h1 b{color:var(--red);font-weight:inherit}
 .novid{white-space:pre-line}.bk{position:fixed;left:0;right:0;bottom:0;z-index:9998;background:#b00020;color:#fff;padding:10px 14px calc(10px + env(safe-area-inset-bottom));font-size:.85rem;line-height:1.35}.bk button{float:right;margin-left:10px;border:0;border-radius:4px;background:#ffffff33;color:#fff;padding:2px 8px}
-#foot{position:fixed;left:0;right:0;bottom:0;z-index:15;padding:9px 3vw calc(9px + env(safe-area-inset-bottom));background:#141414f2;border-top:1px solid #ffffff1f;backdrop-filter:blur(8px);text-align:center;font-size:.78rem;color:var(--ink2)}
-#foot nav{display:flex;flex-wrap:wrap;gap:4px 16px;justify-content:center}#foot a{cursor:pointer;color:var(--ink);text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
-body{padding-bottom:calc(46px + env(safe-area-inset-bottom))}.bk{bottom:calc(42px + env(safe-area-inset-bottom))}
+#foot{position:fixed;left:0;right:0;bottom:0;z-index:15;background:#0e0e0ff5;border-top:1px solid #ffffff1c;backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)}
+#foot nav{display:grid;grid-template-columns:repeat(4,1fr);max-width:640px;margin:0 auto}
+#foot button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:9px 4px 8px;background:none;border:0;border-radius:0;color:var(--ink2);font:600 .66rem/1 Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:color .15s,background .15s}
+#foot button+button{border-left:1px solid #ffffff12}
+#foot button svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7}
+#foot button:hover,#foot button:focus-visible,#foot button:active{color:#fff;background:#ffffff0f}
+body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}.bk{bottom:calc(56px + env(safe-area-inset-bottom))}
+html.lock,html.lock body{overflow:hidden}
+.ov-info{z-index:40;place-items:center;padding:16px;overflow:hidden;overscroll-behavior:contain;background:#000b;backdrop-filter:blur(3px)}
+.sheet{width:min(560px,100%);max-height:min(88vh,calc(100dvh - 32px));display:flex;flex-direction:column;background:#181818;border:1px solid #ffffff1f;border-radius:16px;box-shadow:0 24px 70px #000d;overflow:hidden;animation:sheetIn .22s ease-out}
+@keyframes sheetIn{from{transform:translateY(14px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+.sheet header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 13px;border-bottom:1px solid #ffffff14;flex:none}
+.sheet header h2{margin:0;font-size:1.2rem}
+.sheet .xb{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:#ffffff1a;color:#fff;font-size:1rem;line-height:1;cursor:pointer}.sheet .xb:hover{background:#ffffff2e}
+.sheet .sb{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:4px 18px 22px}
+.sheet .btns button{padding:10px 18px;border-radius:8px;border:1px solid #ffffff2e;background:#ffffff14;color:#fff;font:600 .88rem Arial,sans-serif;cursor:pointer}
+.sheet .btns button:hover{background:#ffffff24}.sheet .btns button.primary{background:var(--red);border-color:var(--red)}.sheet .btns button.primary:hover{filter:brightness(1.12)}
+.sheet .ok{color:#7ddc8a}.sheet .err{color:#ff8a8a}
 .info h2{margin:0 0 4px}.info h3{margin:18px 0 4px;font-size:1rem}.info p,.info li{line-height:1.5;font-size:.92rem}.info small.d{color:var(--ink2)}.info ul{padding-left:20px;margin:6px 0}
 .info label{display:block;margin-top:12px;font-size:.85rem;color:var(--ink2)}.info input,.info select,.info textarea{display:block;width:100%;margin-top:5px;background:#ffffff10;color:inherit;border:1px solid #ffffff26;border-radius:6px;padding:9px 10px;font:inherit}.info select option{color:#000}.info textarea{min-height:90px;resize:vertical}
 .info .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.info .mail{color:var(--red);word-break:break-all}
@@ -263,7 +278,12 @@ body{padding-bottom:calc(46px + env(safe-area-inset-bottom))}.bk{bottom:calc(42p
   <button class="more" id="more" hidden>Load more</button>
 </main>
 <footer id="foot">
-  <nav aria-label="Legal"><a data-i="about">About</a><a data-i="privacy">Privacy Policy</a><a data-i="contact">Contact</a><a data-i="report">Report a movie</a></nav>
+  <nav aria-label="Information">
+    <button type="button" data-i="about"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg><span>About</span></button>
+    <button type="button" data-i="privacy"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Privacy</span></button>
+    <button type="button" data-i="contact"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg><span>Contact</span></button>
+    <button type="button" data-i="report"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><span>Report</span></button>
+  </nav>
 </footer>
 <section class="empty" id="empty" hidden>
   <h2>No sources available</h2>
@@ -1686,7 +1706,7 @@ async function loadRepoProviders() {
 const CONTACT_EMAIL = "sarimforbusiness@gmail.com";
 function openInfo(kind, pre = {}) {
   const host = $("#modal");
-  const close = () => { host.replaceChildren(); window.removeEventListener("keydown", esc); };
+  const close = () => { host.replaceChildren(); document.documentElement.classList.remove("lock"); window.removeEventListener("keydown", esc); };
   const esc = (e) => e.key === "Escape" && close();
   window.addEventListener("keydown", esc);
   const P = (...t) => el("p", {}, ...t), H = (t) => el("h3", {}, t);
@@ -1739,8 +1759,12 @@ function openInfo(kind, pre = {}) {
       el("div", { class: "btns" }, el("button", { class: "primary", onclick: send }, "Send report"), cp), msg,
       P(el("small", { class: "d" }, "Or email us directly: "), mail)];
   }
-  host.replaceChildren(el("div", { class: "overlay", onclick: close },
-    el("section", { class: "detail manage info", onclick: (e) => e.stopPropagation() }, el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), body)));
+  const [heading, ...rest] = body; // body[0] is the <h2> title: it becomes the fixed header of the sheet
+  document.documentElement.classList.add("lock"); // the page behind must not scroll
+  host.replaceChildren(el("div", { class: "overlay ov-info", onclick: close },
+    el("section", { class: "sheet info", role: "dialog", "aria-modal": "true", onclick: (e) => e.stopPropagation() },
+      el("header", {}, heading, el("button", { class: "xb", onclick: close, "aria-label": "Close" }, "✕")),
+      el("div", { class: "sb" }, rest))));
 }
 document.querySelectorAll("#foot [data-i]").forEach((a) => a.addEventListener("click", () => openInfo(a.dataset.i)));
 /* ===================== backend check (standalone HTML / APK only) ===================== */

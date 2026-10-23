@@ -36,6 +36,20 @@ A copy of the site that does not need to be hosted: it sets `window.BACKEND` to 
 3. Upload that HTML to an HTML-to-APK builder (needs internet).
 The key is stored inside the app, so anyone who unpacks the APK can read it: treat it as a deterrent against random sites, not as a secret. Change it in Vercel (and rebuild the APK) if it leaks. Without `APP_KEY`, search/browse still work but streams that need the proxy will not.
 
+## Daily movie notification (APK push, app closed)
+`api/daily.js` runs once a day by Vercel Cron (`vercel.json`, 14:30 UTC = 8 pm India time), picks a random popular movie and sends it to the Firebase topic `all`, which APKs built with the Any2APK "Push notifications" option subscribe to. No database needed.
+1. Firebase console: create a project, add an Android app with your APK's package name, download `google-services.json`, and upload it in Any2APK's push section when building the APK.
+2. Firebase console > Project settings > Service accounts > Generate new private key. Paste the whole JSON into Vercel env `FIREBASE_SERVICE_ACCOUNT`.
+3. Vercel env `CRON_SECRET` = any long random string (Vercel Cron uses it automatically). Redeploy.
+4. Preview without sending: `https://<site>/api/daily?key=<CRON_SECRET>&dry=1`. Send now: same URL without `&dry=1`.
+Vercel's free plan runs a cron once a day, within the scheduled hour. Browsers (not the APK) do not get these notifications.
+
+## Legal pages, reports and removals
+The footer has About (disclaimer: nothing is hosted here, all content comes from third-party providers), Privacy Policy, Contact us (sarimforbusiness@gmail.com) and Report a movie. Every title also has a "Report this title" link. Reports open an email to the contact address (with a Copy button for apps that cannot open mail).
+To take a title off the site after a report, add it to `blocked.json` at the repo root and push:
+`{"ids": ["tt0111161", "14836"], "titles": ["Some Title"]}` (IMDb id, TMDB id, or exact title). Blocked titles disappear from lists, search and "More like this". It does not remove files from the third-party sites that host them.
+The texts are in `index.html` (search for `openInfo`); they are not legal advice, so have them reviewed if you need that.
+
 ## Limits
 - Extractors (hubcloud, gdflix…) are not bundled. Providers needing Node-only modules won't load.
 - `cheerio` is emulated with jQuery (common selectors work; exotic ones may not).

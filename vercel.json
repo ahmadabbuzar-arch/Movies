@@ -6,6 +6,9 @@
     "api/providers.js": {
       "maxDuration": 10,
       "includeFiles": "providers/**"
+    },
+    "api/daily.js": {
+      "maxDuration": 30
     }
   },
   "headers": [
@@ -17,6 +20,25 @@
           "value": "*"
         }
       ]
+    },
+    {
+      "source": "/blocked.json",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/daily",
+      "schedule": "30 14 * * *"
     }
   ]
 }

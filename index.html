@@ -236,6 +236,13 @@ h1{white-space:nowrap}
 .manage .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0;overflow:visible}.manage .note{padding:6px 0}.manage .ok{color:#7ddc8a}
 .manage button:not(.close){background:#ffffff14;border:1px solid #ffffff26;border-radius:6px;padding:7px 14px;cursor:pointer}.manage button.primary{background:var(--red);border-color:var(--red);margin-top:8px}.manage button:disabled{opacity:.5;cursor:default}
 h1{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:.01em;color:#fff;text-shadow:none}h1 img{height:1.7em;width:auto}h1 b{color:var(--red);font-weight:inherit}
+.novid{white-space:pre-line}.bk{position:fixed;left:0;right:0;bottom:0;z-index:9998;background:#b00020;color:#fff;padding:10px 14px calc(10px + env(safe-area-inset-bottom));font-size:.85rem;line-height:1.35}.bk button{float:right;margin-left:10px;border:0;border-radius:4px;background:#ffffff33;color:#fff;padding:2px 8px}
+#foot{margin:36px auto 0;padding:22px 4vw calc(28px + env(safe-area-inset-bottom));border-top:1px solid #ffffff1a;text-align:center;color:var(--ink2);font-size:.8rem}
+#foot nav{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:center;margin-bottom:10px}#foot a{cursor:pointer;color:var(--ink);text-decoration:underline;text-underline-offset:3px}#foot p{margin:0;max-width:560px;margin-inline:auto;line-height:1.4}
+.info h2{margin:0 0 4px}.info h3{margin:18px 0 4px;font-size:1rem}.info p,.info li{line-height:1.5;font-size:.92rem}.info small.d{color:var(--ink2)}.info ul{padding-left:20px;margin:6px 0}
+.info label{display:block;margin-top:12px;font-size:.85rem;color:var(--ink2)}.info input,.info select,.info textarea{display:block;width:100%;margin-top:5px;background:#ffffff10;color:inherit;border:1px solid #ffffff26;border-radius:6px;padding:9px 10px;font:inherit}.info select option{color:#000}.info textarea{min-height:90px;resize:vertical}
+.info .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.info .mail{color:var(--red);word-break:break-all}
+.rep{display:inline-block;margin:2px 0 8px;font-size:.8rem;color:var(--ink2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -254,6 +261,10 @@ h1{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:.0
   <div class="grid" id="grid" hidden></div>
   <button class="more" id="more" hidden>Load more</button>
 </main>
+<footer id="foot">
+  <nav aria-label="Legal"><a data-i="about">About</a><a data-i="privacy">Privacy Policy</a><a data-i="contact">Contact us</a><a data-i="report">Report a movie</a></nav>
+  <p>PopcornNet does not host or upload any movies. All content comes from third-party providers.</p>
+</footer>
 <section class="empty" id="empty" hidden>
   <h2>No sources available</h2>
   <p>Add provider files to the <code>providers/</code> folder of the site.</p>
@@ -853,11 +864,17 @@ const asList = (x) => {
   if (typeof x === "object") for (const k of ["streams", "sources", "links", "data", "results", "posts", "items", "list", "episodes"]) if (Array.isArray(x[k])) return x[k];
   return typeof x === "object" ? [x] : [x];
 };
+const BLOCK = { ids: new Set(), titles: new Set() };
+const blockKey = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const isBlocked = (o) => BLOCK.ids.size + BLOCK.titles.size > 0 && (BLOCK.titles.has(blockKey(o.title)) || String(o.link).split(/[:/]/).some((t) => BLOCK.ids.has(t.toLowerCase())));
+async function loadBlocked() { // blocked.json: {"ids": ["tt0111161", "14836"], "titles": ["Some Title"]}
+  try { const j = await (await fetch(API + "/blocked.json", { cache: "no-store" })).json(); (j.ids || []).forEach((x) => BLOCK.ids.add(String(x).toLowerCase())); (j.titles || []).forEach((x) => BLOCK.titles.add(blockKey(x))); } catch { /* no list */ }
+}
 const normPosts = (x) => asList(x).map((o) => {
   if (typeof o === "string") return { title: o, link: o, image: "" };
   const link = pick(o, "link", "url", "href", "id", "slug", "path");
   return link ? { ...o, link: String(link), title: String(pick(o, "title", "name", "label") || link), image: pick(o, "image", "poster", "img", "thumbnail", "thumb", "cover") || "" } : null;
-}).filter(Boolean);
+}).filter(Boolean).filter((o) => !isBlocked(o));
 const normStreams = (x) => asList(x).map((o) => {
   if (typeof o === "string") o = { link: o };
   let link = pick(o, "link", "url", "file", "src", "stream", "streamUrl", "source", "playlist");
@@ -1343,7 +1360,7 @@ function openDetail(post) {
       }
       const savedSrv = store.get("srv", "All"); // the server you picked last time stays selected while it exists
       f = { lang: "All", q: "All", srv: streams.some((x) => x._i.srv === savedSrv) ? savedSrv : "All" };
-      if (!streams.length) { err = "No playable stream found."; errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
+      if (!streams.length) { err = "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : ""); errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
     }).catch((e) => { if (!gone) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
   };
@@ -1398,7 +1415,7 @@ function openDetail(post) {
             el("button", { onclick: () => { allowed.add(s.link); draw(); } }, "Play anyway"), " ",
             el("button", { onclick: () => dropProvider(s._i.srv) }, `Never use ${s._i.srv}`))));
         } } : null, { hasNext: () => idx < vis().length - 1, onPlay: () => noteSrc(s._i.srv, 1) });
-    else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." : idle ? "Choose a language, then tap an episode." : "Loading video…")));
+    else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : "") : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }
   function drawBody() {
@@ -1418,6 +1435,7 @@ function openDetail(post) {
       }
     }
     nodes.push(el("h3", {}, meta?.title || post.title, meta?.year && el("small", {}, ` ${meta.year}`)));
+    nodes.push(el("a", { class: "rep", onclick: () => openInfo("report", { title: meta?.title || post.title }) }, "⚑ Report this title"));
     nodes.push(el("p", {}, meta?.synopsis || (meta ? "No synopsis available." : "")));
     nodes.push(moreSec);
     body.replaceChildren(...nodes);
@@ -1664,12 +1682,86 @@ async function loadRepoProviders() {
   }
   S.report = `files read: ${files.size}\nlisted: ${names.length}\nduplicates ignored: ${dropped.dup}\nskipped by skip.json (${dropped.skip.length}): ${dropped.skip.join(", ")}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
 }
+/* ===================== About, Privacy, Contact, Report ===================== */
+const CONTACT_EMAIL = "sarimforbusiness@gmail.com";
+function openInfo(kind, pre = {}) {
+  const host = $("#modal");
+  const close = () => { host.replaceChildren(); window.removeEventListener("keydown", esc); };
+  const esc = (e) => e.key === "Escape" && close();
+  window.addEventListener("keydown", esc);
+  const P = (...t) => el("p", {}, ...t), H = (t) => el("h3", {}, t);
+  const mail = el("a", { class: "mail", href: "mailto:" + CONTACT_EMAIL }, CONTACT_EMAIL);
+  const copy = async (txt, btn) => { try { await navigator.clipboard.writeText(txt); btn.textContent = "Copied ✓"; } catch { btn.textContent = "Copy not available"; } };
+  let body;
+  if (kind === "about") body = [el("h2", {}, "About PopcornNet"),
+    P("PopcornNet is a search and discovery tool for movies and series."),
+    H("We do not host any content"),
+    P("We do not upload, store, host or distribute any movies, series or video files. Titles, posters and descriptions come from public catalogs (Cinemeta and TMDB). Every video link comes from third-party providers and websites that we do not own, operate or control."),
+    H("No responsibility for third-party content"),
+    P("We are not responsible for the content, accuracy, legality, quality or availability of anything provided by third-party providers. Use of those services is at your own risk and you must follow the laws of your country."),
+    H("Rights holders"),
+    P("If you believe a title should not be listed here, use ", el("a", { class: "mail", onclick: () => openInfo("report") }, "Report a movie"), " or write to ", mail, ". To have a file removed from where it is actually hosted, please also contact the website that hosts it.")];
+  else if (kind === "privacy") body = [el("h2", {}, "Privacy Policy"), el("small", { class: "d" }, "Last updated: October 22, 2026"),
+    P("PopcornNet has no accounts or sign-in. We do not ask for or collect your name, email address, phone number or location."),
+    H("Stored on your device"),
+    P("Your browser or app keeps a few small settings locally (for example the server you chose, sources you hid, which sources worked before, and an optional proxy address). This data stays on your device and you can clear it by clearing the app or site data."),
+    H("Third-party services"),
+    el("ul", {}, el("li", {}, "Catalog and posters come from Cinemeta and TMDB."),
+      el("li", {}, "Our server (hosted on Vercel) relays some requests for you, such as catalog requests and requests to provider websites. Hosting logs such as your IP address and the requested address may be kept by the host for a limited time. We do not use them to identify you."),
+      el("li", {}, "Third-party providers and the sites that serve the video can see your IP address and what you request, directly or through our relay. They have their own privacy practices that we do not control."),
+      el("li", {}, "Some libraries load from public CDNs.")),
+    H("Ads and notifications"),
+    P("If the version of the app you installed shows ads, the ad network may use device identifiers such as the advertising ID, under its own privacy policy. If push notifications are enabled, the push service (for example Firebase) handles the device token needed to deliver them."),
+    H("Children"),
+    P("PopcornNet is not directed to children under 13 and we do not knowingly collect their data."),
+    H("Changes"),
+    P("We may update this policy; the date above shows the latest version."),
+    H("Contact"), P("Questions about privacy: ", mail)];
+  else if (kind === "contact") body = [el("h2", {}, "Contact us"),
+    P("Questions, bugs, business enquiries, or content reports:"),
+    P(mail),
+    (() => { const b = el("button", { onclick: () => copy(CONTACT_EMAIL, b) }, "Copy email"); return el("div", { class: "btns" }, el("button", { class: "primary", onclick: () => { location.href = "mailto:" + CONTACT_EMAIL; } }, "Open email app"), b); })(),
+    P(el("small", { class: "d" }, "To report or request removal of a movie, use "), el("a", { class: "mail", onclick: () => openInfo("report") }, "Report a movie"), ".")];
+  else {
+    const f = { title: pre.title || "", link: "", reason: "I am the copyright owner", email: "", details: "" };
+    const text = () => ["Report from PopcornNet", "", `Title: ${f.title}`, `Where I saw it (link/page): ${f.link}`, `Reason: ${f.reason}`, `My email: ${f.email}`, "", f.details].join("\n");
+    const field = (label, key, tag = "input", extra = {}) => el("label", {}, label, el(tag, { value: f[key], oninput: (e) => { f[key] = e.target.value; }, ...extra }, tag === "textarea" ? f[key] : ""));
+    const reason = el("label", {}, "Reason", el("select", { onchange: (e) => { f.reason = e.target.value; } },
+      ["I am the copyright owner", "Copyright claim on behalf of the owner", "Wrong or broken video", "Inappropriate content", "Other"].map((o) => el("option", { value: o }, o))));
+    const msg = el("p", { class: "note", role: "status" }, "");
+    const send = () => { if (!f.title.trim()) { msg.textContent = "Please enter the movie or series title."; msg.className = "note err"; return; } location.href = `mailto:${CONTACT_EMAIL}?subject=${enc("Report: " + f.title.trim())}&body=${enc(text())}`; msg.textContent = "Your email app should open. If it did not, tap Copy and email it to " + CONTACT_EMAIL + "."; msg.className = "note ok"; };
+    const cp = el("button", { onclick: () => { if (!f.title.trim()) { msg.textContent = "Please enter the movie or series title."; msg.className = "note err"; return; } copy(text(), cp); } }, "Copy report");
+    body = [el("h2", {}, "Report a movie"),
+      P("Want a title removed from PopcornNet, or found something wrong? Tell us below. We review every report and remove titles from this app where appropriate."),
+      P(el("small", { class: "d" }, "We do not host any files. The videos are on third-party websites, so to remove a file itself please also contact the site that hosts it. Copyright owners: please include your name, the exact page or link, and a short statement that you own the rights.")),
+      field("Movie / series title *", "title"), field("Link or page where you saw it (optional)", "link"), reason,
+      field("Your email (so we can reply)", "email", "input", { type: "email" }), field("Details (optional)", "details", "textarea"),
+      el("div", { class: "btns" }, el("button", { class: "primary", onclick: send }, "Send report"), cp), msg,
+      P(el("small", { class: "d" }, "Or email us directly: "), mail)];
+  }
+  host.replaceChildren(el("div", { class: "overlay", onclick: close },
+    el("section", { class: "detail manage info", onclick: (e) => e.stopPropagation() }, el("button", { class: "close", onclick: close, "aria-label": "Close" }, "Close"), body)));
+}
+document.querySelectorAll("#foot [data-i]").forEach((a) => a.addEventListener("click", () => openInfo(a.dataset.i)));
+/* ===================== backend check (standalone HTML / APK only) ===================== */
+async function checkBackend() {
+  if (!API) return; // normal site: same-origin, nothing to check
+  const bad = (t) => { S.backendMsg = t; if (!$(".bk")) document.body.append(el("div", { class: "bk" }, el("button", { onclick: (e) => e.target.parentNode.remove() }, "✕"), "⚠ " + t)); };
+  if (!APP_KEY || /PUT_YOUR/i.test(APP_KEY)) return bad("APP_KEY HTML mein set nahi hai (abhi PUT_YOUR_APP_KEY_HERE likha hai). Vercel wali APP_KEY yahan daal kar APK dobara banao, warna streams nahi chalengi.");
+  try {
+    const r = await fetch(proxyUrl("https://v3-cinemeta.strem.io/manifest.json"));
+    if (r.status === 403) bad("Backend ne is app ko reject kiya (403): HTML ki APP_KEY Vercel ki APP_KEY se alag hai, ya Vercel mein APP_KEY set nahi / naya backend push nahi hua.");
+    else if (!r.ok) bad(`Backend proxy ne error diya (${r.status}). Vercel deploy aur logs check karo.`);
+  } catch (e) { bad("Backend (" + API + ") tak nahi pahuncha: internet check karo, ya backend zip push nahi hui (CORS)."); }
+}
 (async () => {
   setNote("Loading…");
+  await loadBlocked();
   await loadRepoProviders();
   setNote("");
   if (location.hash === "#debug") $("#modal").replaceChildren(el("div", { class: "overlay", onclick: (e) => e.target.classList.contains("overlay") && e.target.remove() }, el("pre", { class: "diag" }, S.report || "")));
   S.pid = AUTO; renderShell(); await renderHome();
+  checkBackend().catch(() => {});
 })();
 </script>
 </body>

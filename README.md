@@ -26,6 +26,9 @@ Files: `index.html` (the whole site) · `logo.png`, `favicon.ico`, `favicon-*.pn
 ## Wrong video?
 The player's title bar shows which source is playing. In the gear menu, **Wrong video?** offers *Try next source* and *Never use <source>* (remembered in this browser; *Show hidden sources again* undoes it). Movies are also checked automatically: a video whose length is far from the film's runtime, or whose label names another year or an episode (S01E02), is skipped. If the last remaining source also looks wrong, the player stops and shows a warning with **Play anyway** and **Never use <source>**.
 
+## Auto: first stream fast, more servers keep arriving
+Playback starts about 1.5s after the first provider answers. The other providers keep searching in the background (up to 45s) and their servers are added to the gear menu > Server as they arrive; if the current stream fails and nothing else is ready yet, the player waits for them instead of showing an error.
+
 ## Dead streams
 A stream gets about 22s in total (7s for the direct try, 12s for proxy tries); then the next source is tried automatically, and the player title shows which one (e.g. `(3/12)`). Sources that play move up, sources that keep failing move down (remembered in this browser, quality still counts most).
 

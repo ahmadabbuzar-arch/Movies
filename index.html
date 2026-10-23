@@ -971,27 +971,32 @@ function autoProv() {
     id: AUTO, name: "Auto (all providers)", rec: {}, getMore: (a) => (first.getMore ? first.getMore(a) : []),
     getCatalog: () => first.getCatalog(), getPosts: (a) => first.getPosts(a), getSearchPosts: (a) => first.getSearchPosts(a),
     getMeta: async (a) => { const m = await first.getMeta(a); if (m.tmdb) TITLES.set(String(m.tmdb), { title: m.title, year: m.year }); return m; }, getEpisodes: (a) => first.getEpisodes(a),
+    // Progressive: resolves a moment after the first provider answers so playback can start, then the remaining providers keep
+    // working in the background and hand any new streams to a.onMore(). a.cancelled() stops the background work.
     getStream: (a) => new Promise((resolve) => {
-      const found = []; let grace = null, done = false, hard = null;
-      const finish = () => {
-        if (done) return; done = true; clearTimeout(grace); clearTimeout(hard);
-        const seen = new Set();
-        resolve(found.filter((x) => !seen.has(x.link) && seen.add(x.link)).sort((x, y) => (x.type === "embed") - (y.type === "embed")));
-      };
-      hard = setTimeout(finish, 40000); let checked = 0;
+      const found = [], seen = new Set(); let grace = null, first = false, allDone = false, hard = null;
+      const fresh = (arr) => arr.filter((x) => !seen.has(x.link) && seen.add(x.link));
+      const emitFirst = () => { if (first) return; first = true; clearTimeout(grace); resolve(fresh(found.splice(0)).sort((x, y) => (x.type === "embed") - (y.type === "embed"))); };
+      const finishAll = () => { if (allDone) return; allDone = true; clearTimeout(hard); emitFirst(); a.onDone?.(); };
+      hard = setTimeout(finishAll, 45000); let checked = 0;
       const queue = [...list]; let workers = Math.min(8, list.length); // 8 providers at a time
       const worker = async () => {
-        for (let pv; !done && (pv = queue.shift()); ) {
+        for (let pv; !allDone && !(a.cancelled && a.cancelled()) && (pv = queue.shift()); ) {
           if ((pv._fails || 0) >= 2) { a.onProgress?.(++checked, list.length); continue; } // dead provider: skip after 2 errors
           try {
             const r = await withTimeout(autoStream(pv, a), 15000);
             plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
-            if (r.length) { found.push(...r.map((x) => tag(pv, x))); if (!grace) grace = setTimeout(finish, 2500); }
+            if (r.length) {
+              const arr = r.map((x) => tag(pv, x));
+              if (!first) { found.push(...arr); if (!grace) grace = setTimeout(emitFirst, 1500); }
+              else { const add = fresh(arr); if (add.length && a.onMore && !(a.cancelled && a.cancelled())) a.onMore(add); }
+            }
           } catch (e) { pv._fails = (pv._fails || 0) + 1; plog(`[auto] ${pv.name}: ${e.message}`); }
           a.onProgress?.(++checked, list.length);
         }
-        if (--workers === 0) finish();
+        if (--workers === 0) finishAll();
       };
+      if (!workers) finishAll();
       for (let i = 0; i < workers; i++) worker();
     }),
   };
@@ -1337,7 +1342,7 @@ const selectBox = (label, opts, val, on) => el("label", { class: "sel" }, label,
 function openDetail(post) {
   const p = cur();
   const host = $("#detail");
-  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false, allowed = new Set(), curLink = "";
+  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false, allowed = new Set(), curLink = "", tried = new Set(), searching = false, waiting = false, playSeq = 0;
 
   let more = null; // must exist before the first draw()
   let mobs = null, morePage = 1, moreBusy = false, moreDone = false;
@@ -1358,31 +1363,53 @@ function openDetail(post) {
   host.replaceChildren(el("div", { class: "overlay", onclick: close }, article));
 
   const play = (link, type) => {
-    streams = null; curLink = String(link); allowed = new Set(); err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
+    const seq = ++playSeq; let bgDone = false; const late = [];
+    streams = null; curLink = String(link); allowed = new Set(); tried = new Set(); searching = false; waiting = false; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
     if (!matchMedia("(max-width:700px)").matches) videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" }); else dscroll.scrollTop = 0;
-    withTimeout(p.getStream({ link, type, onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); } }), 60000).then((s) => {
-      if (gone) return;
-      streams = (Array.isArray(s) ? s.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) }));
-      { const rm = relMap(), sc = (x) => prefRank(x) - 4 * (rm[x._i.srv] || 0); streams.sort((a, b) => sc(a) - sc(b)); } // quality first, but sources that keep failing sink and ones that played rise
+    const stale = () => gone || seq !== playSeq;
+    const yrE = parseInt(meta && meta.year, 10) || 0;
+    const badLabel = (x) => { // a label like "S02E05" or "(1987)" on a film that is not that: some other video
+      if (!(meta && meta.type === "movie")) return false;
+      const t = [x.title, x.name, x.description, x.label].filter((v) => typeof v === "string").join(" ");
+      if (/\bS\d{1,2}\s?E\d{1,3}\b/i.test(t)) return true;
+      const ys = (t.match(/\b(?:19|20)\d{2}\b(?!\s*[x\u00d7]\s*\d)/g) || []).map(Number);
+      return !!yrE && ys.length > 0 && !ys.some((y) => Math.abs(y - yrE) <= 1);
+    };
+    const prep = (arr) => (Array.isArray(arr) ? arr.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) }));
+    const rank = () => { const rm = relMap(), sc = (x) => prefRank(x) - 4 * (rm[x._i.srv] || 0); streams.sort((a, b) => sc(a) - sc(b)); }; // quality first, but sources that keep failing sink and ones that played rise
+    withTimeout(p.getStream({
+      link, type, cancelled: stale,
+      onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); },
+      onDone: () => { // every provider has answered
+        bgDone = true; searching = false;
+        if (!stale() && waiting) { waiting = false; err = "No other working sources were found. Try another server or quality."; errDetail = PLOG.join("\n"); videoBox.replaceChildren(el("div", { class: "novid" }, err)); drawBody(); }
+      },
+      onMore: (fresh) => { // servers found after playback already started: add them to the list (the menu reads it when opened)
+        if (stale()) return;
+        if (!streams) { late.push(...fresh); return; }
+        const hid = hiddenSrc();
+        const add = prep(fresh).filter((x) => !hid.includes(x._i.srv) && !badLabel(x) && !streams.some((y) => y.link === x.link));
+        if (!add.length) return;
+        const cur = vis()[idx];
+        streams = streams.concat(add); rank();
+        if (cur) { const k = vis().indexOf(cur); if (k >= 0) idx = k; }
+        if (waiting) { const k = nextUntried(); if (k >= 0) { waiting = false; idx = k; err = ""; errDetail = ""; draw(); } }
+      },
+    }), 60000).then((s) => {
+      if (stale()) return;
+      streams = prep([...(Array.isArray(s) ? s : []), ...late]);
+      rank();
       const hid = hiddenSrc();
       const kept = streams.filter((x) => !hid.includes(x._i.srv));
       if (kept.length) streams = kept; // never hide everything
-      if (meta && meta.type === "movie") { // a label like "S02E05" or "(1987)" on a film that is not that: some other video
-        const yrE = parseInt(meta.year, 10) || 0;
-        const bad = (x) => {
-          const t = [x.title, x.name, x.description, x.label].filter((v) => typeof v === "string").join(" ");
-          if (/\bS\d{1,2}\s?E\d{1,3}\b/i.test(t)) return true;
-          const ys = (t.match(/\b(?:19|20)\d{2}\b(?!\s*[x\u00d7]\s*\d)/g) || []).map(Number);
-          return !!yrE && ys.length > 0 && !ys.some((y) => Math.abs(y - yrE) <= 1);
-        };
-        const good = streams.filter((x) => !bad(x));
-        if (good.length && good.length < streams.length) { plog(`ignored ${streams.length - good.length} stream(s) whose label names another title/year`); streams = good; }
-      }
+      const good = streams.filter((x) => !badLabel(x));
+      if (good.length && good.length < streams.length) { plog(`ignored ${streams.length - good.length} stream(s) whose label names another title/year`); streams = good; }
+      searching = p.id === AUTO && !bgDone;
       const savedSrv = store.get("srv", "All"); // the server you picked last time stays selected while it exists
       f = { lang: "All", q: "All", srv: streams.some((x) => x._i.srv === savedSrv) ? savedSrv : "All" };
       if (!streams.length) { err = "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : ""); errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
-    }).catch((e) => { if (!gone) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
+    }).catch((e) => { if (!stale()) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
   };
   const showEpisodes = (g) => {
     err = ""; sel = g; eps = { title: g.title, list: null }; drawBody();
@@ -1398,6 +1425,9 @@ function openDetail(post) {
     if (rest.length) { streams = rest; f.srv = "All"; idx = 0; err = ""; errDetail = ""; draw(); }
     else { streams = []; err = `${name} was the only source and is now hidden. Use the gear menu > Show hidden sources again to bring it back.`; draw(); }
   };
+  // next stream not tried yet (prefers the ones after the current), so late arrivals are visited too
+  const nextUntried = () => { const v = vis(); for (let i = idx + 1; i < v.length; i++) if (!tried.has(v[i].link)) return i; for (let i = 0; i < v.length; i++) if (i !== idx && !tried.has(v[i].link)) return i; return -1; };
+  const waitForMore = () => { waiting = true; stopPlayer?.(); stopPlayer = null; videoBox.replaceChildren(el("div", { class: "novid" }, "This source did not work. Looking for more servers…")); };
   const vis = () => (streams || []).filter((x) => (f.lang === "All" || x._i.langs.includes(f.lang)) && (f.q === "All" || x._i.q === f.q) && (f.srv === "All" || x._i.srv === f.srv));
   function draw() {
     if (gone) return;
@@ -1412,29 +1442,32 @@ function openDetail(post) {
           let h = ""; try { h = new URL(now.link).host; } catch { /* keep empty */ }
           err = "Source info"; errDetail = `source: ${now._i.srv}\nlabel: ${[now.title, now.name, now.server].filter((v) => typeof v === "string" && v).join(" | ").slice(0, 200)}\ntype: ${now.type || "?"}  quality: ${now._i.q}\nhost: ${h}\nurl: ${String(now.link).slice(0, 220)}\nfilm: ${(meta && meta.title) || ""} ${(meta && meta.year) || ""} (${(meta && meta.runtime) || "?"} min)\ntmdb link: ${curLink}`; drawBody();
         } }] : []),
-        { label: "Try next source", active: false, pick: () => { if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); } } },
+        { label: "Try next source", active: false, pick: () => { const k = nextUntried(); if (k >= 0) { idx = k; err = ""; errDetail = ""; draw(); } } },
         ...(now ? [{ label: `Never use ${now._i.srv}`, active: false, pick: () => dropProvider(now._i.srv) }] : []),
         ...(hid.length ? [{ label: `Show hidden sources again (${hid.length})`, active: false, pick: () => { store.set("hide", "[]"); } }] : []),
       ] };
       return [sec("Quality", "q", uq((x) => [x._i.q]).sort((x, y) => qRank(y) - qRank(x)), "Auto"), sec("Server", "srv", uq((x) => [x._i.srv]), "Auto"), sec("Audio", "lang", uq((x) => x._i.langs), "Any"), wrong];
     };
     videoBox.dataset.title = ((meta && meta.title) || post.title || "") + (s && s.server ? "  ·  " + s.server + (vis().length > 1 ? `  (${idx + 1}/${vis().length})` : "") : "");
+    if (s) tried.add(s.link);
     if (s) stopPlayer = mountPlayer(videoBox, s, post.image, (m, d) => {
       noteSrc(s._i.srv, -1);
-      if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; } // auto-try next source
+      { const k = nextUntried(); if (k >= 0) { idx = k; err = ""; errDetail = ""; draw(); return; } } // auto-try next source
+      if (searching) { waitForMore(); return; } // more servers may still arrive
       err = m + " Try another server or quality."; errDetail = d || ""; drawBody();
     }, p.rec.streamHeaders, meta && meta.type === "movie" && meta.runtime > 30
       && !allowed.has(s.link)
       ? { min: meta.runtime, wrong: (m) => {
           noteSrc(s._i.srv, -1);
-          if (idx < vis().length - 1) { idx++; err = ""; errDetail = ""; draw(); return; }
+          { const k = nextUntried(); if (k >= 0) { idx = k; err = ""; errDetail = ""; draw(); return; } }
+          if (searching) { waitForMore(); return; }
           const fmt = (x) => { x = Math.round(x); return x >= 60 ? `${Math.floor(x / 60)}h ${x % 60}m` : `${x} min`; };
           stopPlayer?.(); stopPlayer = null;
           videoBox.replaceChildren(el("div", { class: "novid" }, el("div", {},
             el("p", {}, `This is probably the wrong video: it runs ${fmt(m)}, the film is about ${fmt(meta.runtime)}. Source: ${s._i.srv}.`),
             el("button", { onclick: () => { allowed.add(s.link); draw(); } }, "Play anyway"), " ",
             el("button", { onclick: () => dropProvider(s._i.srv) }, `Never use ${s._i.srv}`))));
-        } } : null, { hasNext: () => idx < vis().length - 1, onPlay: () => noteSrc(s._i.srv, 1) });
+        } } : null, { hasNext: () => nextUntried() >= 0 || searching, onPlay: () => noteSrc(s._i.srv, 1) });
     else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : "") : idle ? "Choose a language, then tap an episode." : "Loading video…")));
     drawBody();
   }

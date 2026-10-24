@@ -29,6 +29,12 @@ The player's title bar shows which source is playing. In the gear menu, **Wrong 
 ## Auto: first stream fast, more servers keep arriving
 Playback starts about 1.5s after the first provider answers. The other providers keep searching in the background (up to 45s) and their servers are added to the gear menu > Server as they arrive; if the current stream fails and nothing else is ready yet, the player waits for them instead of showing an error.
 
+## Fullscreen in an APK / WebView
+Real fullscreen is used when the platform has it. Android WebViews often do not, so the player then fills the whole screen itself ("page fullscreen"). If the phone is held upright the picture is turned sideways so tilting the phone shows it the right way up; with auto-rotate on it simply fills the landscape screen. Tap the fullscreen button again (or press Escape) to leave. Embedded iframe players (type "embed") use their own fullscreen button.
+
+## No playable stream
+The message now says how many providers were checked, how many had the title and how many failed, and there is a **Search again** button (plus **Details**). A provider that failed twice is paused for 3 minutes only, not for the whole session.
+
 ## Dead streams
 A stream gets about 22s in total (7s for the direct try, 12s for proxy tries); then the next source is tried automatically, and the player title shows which one (e.g. `(3/12)`). Sources that play move up, sources that keep failing move down (remembered in this browser, quality still counts most).
 

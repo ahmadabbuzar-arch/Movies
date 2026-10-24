@@ -84,6 +84,11 @@ main{position:relative;padding:76px 0 48px}
 html,body{overflow-x:hidden;max-width:100%}
 .pl{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation;outline:0}
 .detail .pl video{width:100%;height:100%;aspect-ratio:auto;object-fit:contain;display:block}
+.pl.pfs{position:fixed!important;inset:0;width:100vw;height:100vh;height:100dvh;z-index:99999;aspect-ratio:auto;max-width:none;border-radius:0}
+.pl.pfs.rot{inset:auto;top:0;left:100vw;left:100dvw;width:100vh;width:100dvh;height:100vw;height:100dvw;transform-origin:0 0;transform:rotate(90deg)}
+html.pfs-on .overlay{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;animation:none!important;overflow:visible!important}
+html.pfs-on .detail{animation:none!important;overflow:visible!important;isolation:auto!important;transform:none!important;filter:none!important}
+html.pfs-on #foot{display:none}
 .pl:fullscreen{aspect-ratio:auto;width:100vw;height:100vh}.pl:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh}
 .pl .ctl{position:absolute;left:0;right:0;display:flex;opacity:0;pointer-events:none;transition:opacity .25s;color:#fff}
 .pl.show .ctl{opacity:1}.pl.show .bot,.pl.show .mid .pb{pointer-events:auto}
@@ -259,6 +264,8 @@ html.lock,html.lock body{overflow:hidden}
 .info label{display:block;margin-top:12px;font-size:.85rem;color:var(--ink2)}.info input,.info select,.info textarea{display:block;width:100%;margin-top:5px;background:#ffffff10;color:inherit;border:1px solid #ffffff26;border-radius:6px;padding:9px 10px;font:inherit}.info select option{color:#000}.info textarea{min-height:90px;resize:vertical}
 .info .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.info .mail{color:var(--red);word-break:break-all}
 .rep{display:inline-block;margin:2px 0 8px;font-size:.8rem;color:var(--ink2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.btns2{display:flex;gap:10px;justify-content:center;margin-top:12px}.btns2 button{padding:9px 18px;border-radius:8px;border:1px solid #ffffff33;background:#ffffff14;color:#fff;font:600 .85rem Arial,sans-serif;cursor:pointer}.btns2 button:first-child{background:var(--red);border-color:var(--red)}
+.novid pre.diag{text-align:left;white-space:pre-wrap;word-break:break-all;max-height:36vh;overflow:auto;font-size:.7rem;margin-top:12px;padding:10px;background:#000a;border-radius:6px}
 </style>
 </head>
 <body>
@@ -978,20 +985,21 @@ function autoProv() {
       const fresh = (arr) => arr.filter((x) => !seen.has(x.link) && seen.add(x.link));
       const emitFirst = () => { if (first) return; first = true; clearTimeout(grace); resolve(fresh(found.splice(0)).sort((x, y) => (x.type === "embed") - (y.type === "embed"))); };
       const finishAll = () => { if (allDone) return; allDone = true; clearTimeout(hard); emitFirst(); a.onDone?.(); };
-      hard = setTimeout(finishAll, 45000); let checked = 0;
+      hard = setTimeout(finishAll, 50000); let checked = 0;
+      const st = a.stats || (a.stats = {}); Object.assign(st, { total: list.length, ok: 0, empty: 0, err: 0, skip: 0 });
       const queue = [...list]; let workers = Math.min(8, list.length); // 8 providers at a time
       const worker = async () => {
         for (let pv; !allDone && !(a.cancelled && a.cancelled()) && (pv = queue.shift()); ) {
-          if ((pv._fails || 0) >= 2) { a.onProgress?.(++checked, list.length); continue; } // dead provider: skip after 2 errors
+          if ((pv._fails || 0) >= 2 && Date.now() - (pv._failAt || 0) < 180000) { st.skip++; a.onProgress?.(++checked, list.length); continue; } // dead provider: skipped for 3 minutes after 2 errors, then it gets another chance
           try {
-            const r = await withTimeout(autoStream(pv, a), 15000);
+            const r = await withTimeout(autoStream(pv, a), 25000); pv._fails = 0; r.length ? st.ok++ : st.empty++;
             plog(`[auto] ${pv.name}: ${r.length} stream(s)`);
             if (r.length) {
               const arr = r.map((x) => tag(pv, x));
               if (!first) { found.push(...arr); if (!grace) grace = setTimeout(emitFirst, 1500); }
               else { const add = fresh(arr); if (add.length && a.onMore && !(a.cancelled && a.cancelled())) a.onMore(add); }
             }
-          } catch (e) { pv._fails = (pv._fails || 0) + 1; plog(`[auto] ${pv.name}: ${e.message}`); }
+          } catch (e) { pv._fails = (pv._fails || 0) + 1; pv._failAt = Date.now(); st.err++; plog(`[auto] ${pv.name}: ${e.message}`); }
           a.onProgress?.(++checked, list.length);
         }
         if (--workers === 0) finishAll();
@@ -1148,7 +1156,8 @@ function playerShell(v, title) {
   const tm = el("span", { class: "tm" }, "0:00 / 0:00");
   const buf = el("i", { class: "buf" }), pos = el("i", { class: "pos" });
   const bar = el("div", { class: "pr", role: "slider", "aria-label": "Seek" }, buf, pos);
-  const seekTo = (e) => { const r = bar.getBoundingClientRect(), p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); if (v.duration) v.currentTime = p * v.duration; pos.style.width = p * 100 + "%"; };
+  const frac = (e, r) => wrap.classList.contains("rot") ? { x: (e.clientY - r.top) / r.height, y: (r.right - e.clientX) / r.width } : { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  const seekTo = (e) => { const r = bar.getBoundingClientRect(), p = Math.max(0, Math.min(1, frac(e, r).x)); if (v.duration) v.currentTime = p * v.duration; pos.style.width = p * 100 + "%"; };
   bar.onpointerdown = (e) => { e.stopPropagation(); dragging = true; bar.setPointerCapture(e.pointerId); seekTo(e); show(); };
   bar.onpointermove = (e) => { if (dragging) seekTo(e); };
   bar.onpointerup = bar.onpointercancel = () => { dragging = false; show(); };
@@ -1173,13 +1182,23 @@ function playerShell(v, title) {
   const setCc = () => [...v.textTracks].forEach((t, i) => { t.mode = ccOn && i === 0 ? "showing" : "disabled"; });
   const cc = hasCc ? mk("cc", "Subtitles", () => { ccOn = !ccOn; setCc(); cc.classList.toggle("on", ccOn); }, ccOn ? "on" : "") : null;
   if (hasCc) v.addEventListener("loadedmetadata", setCc);
-  const onFs = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); wrap.classList.toggle("fs", on); if (!on) try { screen.orientation?.unlock?.(); } catch { /* ignore */ } };
+  const realFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const applyRot = () => wrap.classList.toggle("rot", wrap.classList.contains("pfs") && innerHeight > innerWidth); // portrait + page fullscreen: turn the picture sideways so tilting the phone shows it upright
+  const setPseudo = (on) => { const was = wrap.classList.contains("pfs"); if (!on && !was) return; wrap.classList.toggle("pfs", on); wrap.classList.toggle("fs", on || realFs()); document.documentElement.classList.toggle("pfs-on", on); document.documentElement.classList.toggle("lock", on); applyRot(); };
+  const onFs = () => { const on = realFs(); if (on) setPseudo(false); wrap.classList.toggle("fs", on || wrap.classList.contains("pfs")); if (!on) try { screen.orientation?.unlock?.(); } catch { /* ignore */ } };
   const fs = () => {
-    if (document.fullscreenElement || document.webkitFullscreenElement) return (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    if (wrap.classList.contains("pfs")) return setPseudo(false);
+    if (realFs()) return (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    const fallback = () => { if (!realFs() && !wrap.classList.contains("pfs")) setPseudo(true); }; // WebViews often have no Fullscreen API: fill the screen with the player instead
     const f = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
-    if (f) { try { const r = f.call(wrap); r?.then?.(() => screen.orientation?.lock?.("landscape")?.catch?.(() => {}))?.catch?.(() => {}); } catch { /* ignore */ } }
-    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); // iPhone
+    if (f) {
+      try { const r = f.call(wrap); if (r && r.then) r.then(() => screen.orientation?.lock?.("landscape")?.catch?.(() => {}), fallback); } catch { fallback(); }
+      setTimeout(fallback, 500); // some WebViews accept the call and then do nothing
+    } else if (v.webkitEnterFullscreen && /iPhone|iPod/.test(navigator.userAgent)) v.webkitEnterFullscreen(); // iPhone
+    else fallback();
   };
+  const onKey = (e) => { if (e.key === "Escape" && wrap.classList.contains("pfs")) setPseudo(false); };
+  window.addEventListener("resize", applyRot); document.addEventListener("keydown", onKey);
   document.addEventListener("fullscreenchange", onFs); document.addEventListener("webkitfullscreenchange", onFs);
   const setIcons = (playing) => { big.innerHTML = small.innerHTML = playing ? IC.pause : IC.play; };
   const upd = () => {
@@ -1198,7 +1217,7 @@ function playerShell(v, title) {
   wrap.addEventListener("pointermove", () => show());
   wrap.addEventListener("click", (e) => {
     if (!menu.hidden) { menu.hidden = true; return; }
-    const r = wrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; taps++; clearTimeout(tapT);
+    const r = wrap.getBoundingClientRect(), { x, y } = frac(e, r); taps++; clearTimeout(tapT);
     tapT = setTimeout(() => {
       if (taps === 1) {
         if (!touch) toggle();
@@ -1223,7 +1242,7 @@ function playerShell(v, title) {
     el("div", { class: "ctl bot" }, el("div", { class: "prr" }, bar, tm),
       el("div", { class: "btns" }, small, mute, vol, el("span", { class: "sp" }), ...[cc, audioBtn, gear, spd, fsBtn].filter(Boolean))));
   setIcons(false); mute.innerHTML = IC.vol;
-  return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
+  return { node: wrap, destroy() { clearTimeout(hideT); clearTimeout(tapT); setPseudo(false); window.removeEventListener("resize", applyRot); document.removeEventListener("keydown", onKey); document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); } };
 }
 
 function mountPlayer(box, s, poster, onError, extra, check, hooks = {}) {
@@ -1342,7 +1361,7 @@ const selectBox = (label, opts, val, on) => el("label", { class: "sel" }, label,
 function openDetail(post) {
   const p = cur();
   const host = $("#detail");
-  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false, allowed = new Set(), curLink = "", tried = new Set(), searching = false, waiting = false, playSeq = 0;
+  let f = { lang: "All", q: "All", srv: "All" }, meta = null, streams = null, err = "", errDetail = "", idx = 0, eps = null, sel = null, idle = false, stopPlayer = null, gone = false, allowed = new Set(), curLink = "", curType = "", tried = new Set(), searching = false, waiting = false, playSeq = 0;
 
   let more = null; // must exist before the first draw()
   let mobs = null, morePage = 1, moreBusy = false, moreDone = false;
@@ -1364,7 +1383,7 @@ function openDetail(post) {
 
   const play = (link, type) => {
     const seq = ++playSeq; let bgDone = false; const late = [];
-    streams = null; curLink = String(link); allowed = new Set(); tried = new Set(); searching = false; waiting = false; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
+    streams = null; curLink = String(link); curType = type; allowed = new Set(); tried = new Set(); searching = false; waiting = false; err = ""; errDetail = ""; idx = 0; idle = false; PLOG.length = 0; draw();
     if (!matchMedia("(max-width:700px)").matches) videoBox.scrollIntoView({ block: "nearest", behavior: "smooth" }); else dscroll.scrollTop = 0;
     const stale = () => gone || seq !== playSeq;
     const yrE = parseInt(meta && meta.year, 10) || 0;
@@ -1376,9 +1395,10 @@ function openDetail(post) {
       return !!yrE && ys.length > 0 && !ys.some((y) => Math.abs(y - yrE) <= 1);
     };
     const prep = (arr) => (Array.isArray(arr) ? arr.filter((x) => x && x.link) : []).map((x) => ({ ...x, _i: streamInfo(x) }));
+    const stats = {};
     const rank = () => { const rm = relMap(), sc = (x) => prefRank(x) - 4 * (rm[x._i.srv] || 0); streams.sort((a, b) => sc(a) - sc(b)); }; // quality first, but sources that keep failing sink and ones that played rise
     withTimeout(p.getStream({
-      link, type, cancelled: stale,
+      link, type, cancelled: stale, stats,
       onProgress: (d, t) => { if (!gone && streams === null) videoBox.replaceChildren(el("div", { class: "novid" }, `Searching sources\u2026 ${d}/${t} checked`)); },
       onDone: () => { // every provider has answered
         bgDone = true; searching = false;
@@ -1407,7 +1427,9 @@ function openDetail(post) {
       searching = p.id === AUTO && !bgDone;
       const savedSrv = store.get("srv", "All"); // the server you picked last time stays selected while it exists
       f = { lang: "All", q: "All", srv: streams.some((x) => x._i.srv === savedSrv) ? savedSrv : "All" };
-      if (!streams.length) { err = "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : ""); errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
+      if (!streams.length) {
+        const n = (stats.ok || 0) + (stats.empty || 0) + (stats.err || 0);
+        err = "No playable stream found." + (stats.total ? `\n\nChecked ${n} of ${stats.total} providers: ${stats.ok || 0} had streams, ${stats.empty || 0} did not have this title, ${stats.err || 0} failed or timed out, ${stats.skip || 0} paused after errors.` + ((stats.err || 0) + (stats.skip || 0) > n / 2 ? "\nMany providers failed: check your internet connection and tap Search again." : "") : "") + (S.backendMsg ? "\n\n" + S.backendMsg : ""); errDetail = `provider: ${p.name}\nlink: ${link}\nraw result: ${JSON.stringify(s)?.slice(0, 200)}\n` + (PLOG.join("\n") || "(provider made no network requests)"); }
       draw();
     }).catch((e) => { if (!stale()) { err = e.message; errDetail = `provider: ${p.name}\n` + PLOG.join("\n"); draw(); } });
   };
@@ -1468,7 +1490,16 @@ function openDetail(post) {
             el("button", { onclick: () => { allowed.add(s.link); draw(); } }, "Play anyway"), " ",
             el("button", { onclick: () => dropProvider(s._i.srv) }, `Never use ${s._i.srv}`))));
         } } : null, { hasNext: () => nextUntried() >= 0 || searching, onPlay: () => noteSrc(s._i.srv, 1) });
-    else videoBox.replaceChildren(el("div", { class: "novid" }, err || (streams ? "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : "") : idle ? "Choose a language, then tap an episode." : "Loading video…")));
+    else {
+      const text = err || (streams ? "No playable stream found." + (S.backendMsg ? "\n\n" + S.backendMsg : "") : idle ? "Choose a language, then tap an episode." : "Loading video…");
+      const failed = streams !== null && !vis().length && !idle && curLink;
+      const pre = el("pre", { class: "diag", hidden: true }, errDetail || "");
+      videoBox.replaceChildren(el("div", { class: "novid" }, el("div", {}, el("p", {}, text),
+        failed ? el("div", { class: "btns2" },
+          el("button", { onclick: () => { S.providers.forEach((x) => { x._fails = 0; }); play(curLink, curType); } }, "Search again"),
+          errDetail ? el("button", { onclick: () => { pre.hidden = !pre.hidden; } }, "Details") : null) : null,
+        failed && errDetail ? pre : null)));
+    }
     drawBody();
   }
   function drawBody() {

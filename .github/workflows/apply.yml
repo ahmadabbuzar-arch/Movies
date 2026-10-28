@@ -1,0 +1,22 @@
+name: Apply update zip
+on:
+  workflow_dispatch:
+  push:
+    paths: ["popcornnet-provider-adapter.zip"]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -o popcornnet-provider-adapter.zip -d /tmp/u
+          rm -rf /tmp/u/reel-room/providers /tmp/u/reel-room/blocked.json
+          cp -r /tmp/u/reel-room/. .
+          rm popcornnet-provider-adapter.zip
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Add provider adapter" || exit 0
+          git push

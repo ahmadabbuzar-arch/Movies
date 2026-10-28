@@ -1,0 +1,9 @@
+{
+  "name": "popcornnet",
+  "private": true,
+  "description": "PopcornNet (static site + Vercel functions). No runtime dependencies.",
+  "scripts": {
+    "test": "node --test --test-force-exit tests/provider-adapter.test.js tests/api-handlers.test.js",
+    "test:e2e": "node tests/e2e-browser.js"
+  }
+}

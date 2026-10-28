@@ -2,6 +2,9 @@
 
 Files: `index.html` (the whole site) · `logo.png`, `favicon.ico`, `favicon-*.png`, `apple-touch-icon.png`, `android-chrome-*.png`, `site.webmanifest` (logo and icons) · `api/proxy.js` (Vercel function) · `vercel.json`
 
+## Configured providers (JSON)
+Providers can also be described by JSON definitions in `api/_provider-configs/` (validated and run on the server, secrets stay in environment variables). Format, error codes, env variables and security model: **PROVIDERS.md**. Diagnostics: open the site with `#debug`, or `/provider-diagnostics.html`.
+
 ## Deploy
 1. Put these files in a GitHub repo (keep the `api/` folder).
 2. vercel.com → Add New → Project → import the repo → Framework "Other" → Deploy.

@@ -9,6 +9,14 @@
     },
     "api/daily.js": {
       "maxDuration": 30
+    },
+    "api/provider-configs.js": {
+      "maxDuration": 10,
+      "includeFiles": "api/_provider-configs/**,api/_provider-adapters/**"
+    },
+    "api/provider-resolve.js": {
+      "maxDuration": 30,
+      "includeFiles": "api/_provider-configs/**,api/_provider-adapters/**"
     }
   },
   "headers": [

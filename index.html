@@ -1766,6 +1766,49 @@ async function loadRepoProviders() {
   }
   S.report = `files read: ${files.size}\nlisted: ${names.length}\nduplicates ignored: ${dropped.dup}\nskipped by skip.json (${dropped.skip.length}): ${dropped.skip.join(", ")}\nloaded (${S.providers.length}):\n` + S.providers.map((x) => `  ${x.name} [${x.tmdb ? "tmdb" : "search"}]`).join("\n") + `\nskipped (${S.failed.length}):\n` + S.failed.map((x) => `  ${x.id}: ${x.error}`).join("\n");
 }
+/* pn-config-adapter:start */
+// Configured providers: JSON definitions in api/_provider-configs/ (format "popcornnet.provider/1", see PROVIDERS.md).
+// The server validates them and runs them (/api/provider-resolve), so URLs, headers and secrets never reach this page.
+// Each ready definition becomes an ordinary Nuvio-style provider (getStreams) and goes through the same loader, Auto mode and player as every other provider.
+async function resolveConfigured(id, tmdbId, mediaType, season, episode) {
+  const qs = new URLSearchParams({ id, tmdb: String(tmdbId), type: mediaType === "tv" ? "tv" : "movie" });
+  if (mediaType === "tv") { qs.set("season", String(season ?? 1)); qs.set("episode", String(episode ?? 1)); }
+  if (APP_KEY) qs.set("k", APP_KEY);
+  let r, j;
+  try { r = await fetch(`${API}/api/provider-resolve?${qs}`); j = await r.json(); }
+  catch { plog(`[config:${id}] BACKEND_FAILURE: /api/provider-resolve is not reachable (not deployed, offline, or blocked)`); throw new Error("[BACKEND_FAILURE] provider backend is not reachable"); }
+  if (j && Array.isArray(j.streams)) return j.streams;
+  const e = (j && j.error) || {}, code = e.code || "BACKEND_FAILURE", msg = e.message || `HTTP ${r.status}`;
+  plog(`[config:${id}] ${code}: ${msg}`);
+  if (code === "NO_MEDIA" || code === "TYPE_NOT_SUPPORTED") return []; // this provider simply does not have the title
+  throw new Error(`[${code}] ${msg}`);
+}
+window.__pnResolve = resolveConfigured;
+const configProviderSource = (id, name) => "const ID = " + JSON.stringify(id) + ";\n" +
+  "async function getStreams(tmdbId, mediaType, season, episode) { return window.__pnResolve(ID, tmdbId, mediaType, season, episode); }\n" +
+  "module.exports = { id: " + JSON.stringify("cfg-" + id) + ", name: " + JSON.stringify(name) + ", getStreams };\n";
+async function loadConfiguredProviders() {
+  let data;
+  try {
+    const r = await fetch(`${API}/api/provider-configs${APP_KEY ? "?k=" + enc(APP_KEY) : ""}`);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    data = await r.json();
+  } catch (e) { S.cfg = { error: `provider configuration endpoint unavailable (${e.message}); only providers from /providers are used` }; return; }
+  S.cfg = data;
+  for (const c of data.providers || []) {
+    const id = "cfg-" + c.id;
+    if (S.providers.some((x) => x.id === id)) continue; // already registered
+    try { S.providers.push(await loadProvider({ id, folder: id, baseUrl: "", files: { "index.js": configProviderSource(c.id, c.name + (c.mock ? " (mock)" : "")) } })); }
+    catch (e) { S.failed.push({ id, error: e.message }); }
+  }
+}
+function configReport() {
+  const c = S.cfg; if (!c) return "";
+  if (c.error) return `\nconfigured providers: ${c.error}`;
+  const lines = (c.diagnostics || []).map((d) => `  ${d.id || d.file}: ${d.status}` + (d.errors.length ? ` — ${d.errors.map((e) => (e.path ? e.path + ": " : "") + e.message).join("; ")}` : "") + (d.unsupported.length ? ` — unsupported: ${d.unsupported.join("; ")}` : ""));
+  return `\nconfigured providers (${(c.providers || []).length} ready of ${lines.length}):\n${lines.join("\n") || "  (none configured)"}${(c.notes || []).map((n) => "\n  note: " + n).join("")}`;
+}
+/* pn-config-adapter:end */
 /* ===================== About, Privacy, Contact, Report ===================== */
 const CONTACT_EMAIL = "sarimforbusiness@gmail.com";
 function openInfo(kind, pre = {}) {
@@ -1846,8 +1889,9 @@ async function checkBackend() {
   setNote("Loading…");
   await loadBlocked();
   await loadRepoProviders();
+  await loadConfiguredProviders();
   setNote("");
-  if (location.hash === "#debug") $("#modal").replaceChildren(el("div", { class: "overlay", onclick: (e) => e.target.classList.contains("overlay") && e.target.remove() }, el("pre", { class: "diag" }, S.report || "")));
+  if (location.hash === "#debug") $("#modal").replaceChildren(el("div", { class: "overlay", onclick: (e) => e.target.classList.contains("overlay") && e.target.remove() }, el("pre", { class: "diag" }, (S.report || "") + configReport())));
   S.pid = AUTO; renderShell(); await renderHome();
   checkBackend().catch(() => {});
 })();
